@@ -1,0 +1,12 @@
+# simulation command: /data1/gerryt/tracm/scripts/tracm-sim.py -t 5 --genomes ./mu_genomes/GCF_000160055.1_ASM16005v1_genomic.fna ./mu_genomes/GCF_000240185.1_ASM24018v2_genomic.fna ./mu_genomes/GCF_000307345.1_Para_merd_CL03T12C32_V1_genomic.fna ./mu_genomes/GCF_002234575.2_ASM223457v2_genomic.fna ./mu_genomes/GCF_003641185.1_ASM364118v1_genomic.fna ./mu_genomes/GCF_009731575.1_ASM973157v1_genomic.fna ./mu_genomes/GCF_009734005.1_ASM973400v2_genomic.fna ./mu_genomes/GCF_015560805.1_ASM1556080v1_genomic.fna ./mu_genomes/GCF_018292125.1_ASM1829212v1_genomic.fna ./mu_genomes/GCF_018292165.1_ASM1829216v1_genomic.fna --tran-genome ./mu_genomes/GCF_003641185.1_ASM364118v1_genomic.fna -d 5 -b 10000 -n 5 -o sim_d5_ref_GCF_003641185.1_ASM364118v1_genomic --prefix sim_d5_ref_GCF_003641185.1_ASM364118v1_genomic
+genome,propA,propB,distance
+GCF_000160055.1_ASM16005v1_genomic,0.0,0.16878271777577863,10023
+GCF_000240185.1_ASM24018v2_genomic,0.0,0.0,9957
+GCF_000307345.1_Para_merd_CL03T12C32_V1_genomic,0.0,0.11686161548811526,9994
+GCF_002234575.2_ASM223457v2_genomic,0.936484163604135,0.0,9943
+GCF_003641185.1_ASM364118v1_genomic,0.063515836395865,0.7143556667361062,5
+GCF_009731575.1_ASM973157v1_genomic,0.0,0.0,10015
+GCF_009734005.1_ASM973400v2_genomic,0.0,0.0,9949
+GCF_015560805.1_ASM1556080v1_genomic,0.0,0.0,9861
+GCF_018292125.1_ASM1829212v1_genomic,0.0,0.0,10152
+GCF_018292165.1_ASM1829216v1_genomic,0.0,0.0,10023

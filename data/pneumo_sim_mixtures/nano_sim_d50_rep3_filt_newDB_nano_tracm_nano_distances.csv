@@ -1,0 +1,2 @@
+sampleA,sampleB,date difference,SNP distance,transmission distance,expected K,filtered SNP distance,sites considered,MSA file
+sampleA_42_6673_8#24.velvet,sampleB_42_6673_8#24.velvet,NA,33,NA,NA,24,1774837,combined42_6673_8#24

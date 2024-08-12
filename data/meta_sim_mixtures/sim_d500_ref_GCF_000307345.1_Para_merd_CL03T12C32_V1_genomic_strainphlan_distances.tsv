@@ -1,0 +1,4 @@
+species,sample1,sample2,snp_dist
+s__Parabacteroides_merdae,A_t__SGB1949,B_t__SGB1949,7
+s__Akkermansia_muciniphila,A_t__SGB9226,B_t__SGB9226,432
+s__Klebsiella_pneumoniae,B_t__SGB10115,A_t__SGB10115,212

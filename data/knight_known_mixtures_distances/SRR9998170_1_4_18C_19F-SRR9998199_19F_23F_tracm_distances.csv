@@ -1,0 +1,3 @@
+sampleA,sampleB,date difference,SNP distance,transmission distance,expected K,filtered SNP distance,sites considered,MSA file
+SRR9998170_1_4_18C_19F_31_10071_4#11.velvet,SRR9998199_19F_23F_31_10071_4#11.velvet,NA,0,NA,NA,0,1865716,combined31_10071_4#11
+SRR9998170_1_4_18C_19F_119_14673_1#59.velvet,SRR9998199_19F_23F_119_14673_1#59.velvet,NA,0,NA,NA,0,1926719,combined119_14673_1#59

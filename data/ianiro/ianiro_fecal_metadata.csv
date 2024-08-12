@@ -1,0 +1,116 @@
+Study dataset,Sample name,Subject code,sample_type,Donor subject name,Donor sample name,time_point_days,Sequencing depth (bp)
+This_study_Cdiff,FMT_01_t0,R1,recipient-before,D2,,0,14144115193
+This_study_Cdiff,FMT_02_t7,R1,recipient-after,D2,,7,2718778867
+This_study_Cdiff,FMT_03_t15,R1,recipient-after,D2,,15,2869930206
+This_study_Cdiff,FMT_04_t30,R1,recipient-after,D2,,30,20831932928
+This_study_Cdiff,FMT_06_t7,R2,recipient-after,D3,,7,5022303933
+This_study_Cdiff,FMT_07_t15,R2,recipient-after,D3,,15,5352854505
+This_study_Cdiff,FMT_08_t30,R2,recipient-after,D3,,30,11890308969
+This_study_Cdiff,FMT_09_t0,R3,recipient-before,D2,,0,10255784604
+This_study_Cdiff,FMT_10_t7,R3,recipient-after,D2,,7,9328536882
+This_study_Cdiff,FMT_11_t15,R3,recipient-after,D2,,15,7189528418
+This_study_Cdiff,FMT_12_t30,R3,recipient-after,D2,,30,3465814397
+This_study_Cdiff,FMT_13_t0,R4,recipient-before,D2,,0,2833897560
+This_study_Cdiff,FMT_14_t7,R4,recipient-after,D2,,7,9737831497
+This_study_Cdiff,FMT_15_t15,R4,recipient-after,D2,,15,9204566071
+This_study_Cdiff,FMT_16_t30,R4,recipient-after,D2,,30,22228221673
+This_study_Cdiff,FMT_17_t0,R5,recipient-before,D2,,0,4603690012
+This_study_Cdiff,FMT_18_t7,R5,recipient-after,D2,,7,2779253552
+This_study_Cdiff,FMT_20_t30,R5,recipient-after,D2,,30,9883605745
+This_study_Cdiff,FMT_25_t0,R6,recipient-before,D2,,0,3454149625
+This_study_Cdiff,FMT_26_t7,R6,recipient-after,D2,,7,11755694063
+This_study_Cdiff,FMT_27_t15,R6,recipient-after,D2,,15,15560491149
+This_study_Cdiff,FMT_28_t30,R6,recipient-after,D2,,30,3501786481
+This_study_Cdiff,FMT_29_t0,R7,recipient-before,D2,,0,3338773513
+This_study_Cdiff,FMT_30_t15,R7,recipient-after,D2,,15,3897105188
+This_study_Cdiff,FMT_31_t30,R7,recipient-after,D2,,30,4009944274
+This_study_Cdiff,FMT_32_t90,R7,recipient-after,D2,,90,10594585749
+This_study_Cdiff,FMT_41_t7,R8,recipient-after,D2,,7,8502284981
+This_study_Cdiff,FMT_42_t30,R8,recipient-after,D2,,30,3957818149
+This_study_Cdiff,FMT_43_t90,R8,recipient-after,D2,,90,6761378282
+This_study_Cdiff,FMT_44_t0,R9,recipient-before,D3,,0,11991345410
+This_study_Cdiff,FMT_45_t7,R9,recipient-after,D3,,7,4238252704
+This_study_Cdiff,FMT_46_t15,R9,recipient-after,D3,,15,4285539853
+This_study_Cdiff,FMT_61_t0,R10,recipient-before,D1,,0,1091376941
+This_study_Cdiff,FMT_65_t180,R1,recipient-after,D2,,180,6148106533
+This_study_Cdiff,FMT_66_t180,R2,recipient-after,D3,,180,4800606759
+This_study_Cdiff,FMT_67_t90,R3,recipient-after,D2,,90,6374064032
+This_study_Cdiff,FMT_68_t90,R4,recipient-after,D2,,90,7804525474
+This_study_Cdiff,FMT_69_t180,R7,recipient-after,D2,,180,29806787703
+This_study_Cdiff,FMT_70_t180,R8,recipient-after,D2,,180,3816950571
+This_study_Cdiff,FMT_71_t90,R9,recipient-after,D3,,90,10048686955
+This_study_Cdiff,FMT_73_t7,R11,recipient-after,,,7,4698916165
+This_study_Cdiff,FMT_74_t15,R11,recipient-after,,,15,24065344889
+This_study_Cdiff,FMT_75_t0,R12,recipient-before,,,0,13363439084
+This_study_Cdiff,FMT_76_t7,R12,recipient-after,,,7,3409031413
+This_study_Cdiff,FMT_77_t15,R12,recipient-after,,,15,4982235732
+This_study_Cdiff,FMT_78_t180,R12,recipient-after,,,180,10896358646
+This_study_Cdiff,FMT_79_t0,R13,recipient-before,D1,,0,3363693413
+This_study_Cdiff,FMT_80_t15,R13,recipient-after,D1,,15,5301193139
+This_study_Cdiff,FMT_DD_81,D3,donor,,,,7618304244
+This_study_Cdiff,Sample_S25265_FMT_DD_01,D1,donor,,,,1604839558
+This_study_Cdiff,Sample_S25266_FMT_DD_02,D2,donor,,,,1936761038
+This_study_Cdiff,FMT_01,R14,recipient-before,DT019,FMT_DD_19,0,13517363386
+This_study_Cdiff,FMT_DD_19,DT019,donor,,,,13217882804
+This_study_Cdiff,FMT_02,R14,recipient-after,DT019,FMT_DD_19,7,6590372252
+This_study_Cdiff,FMT_03,R14,recipient-after,DT019,FMT_DD_19,15,2561984079
+This_study_Cdiff,FMT_04,R14,recipient-after,DT019,FMT_DD_19,30,5804357418
+This_study_Cdiff,FMT_05,R14,recipient-after,DT019,FMT_DD_19,90,10931765689
+This_study_Cdiff,FMT_06,R15,recipient-before,DT001,FMT_DD_01,0,6326424358
+This_study_Cdiff,FMT_DD_01,DT001,donor,,,,8514771942
+This_study_Cdiff,FMT_07,R15,recipient-after,DT001,FMT_DD_01,7,4407594363
+This_study_Cdiff,FMT_09,R15,recipient-after,DT001,FMT_DD_01,30,8419312562
+This_study_Cdiff,FMT_10,R15,recipient-after,DT001,FMT_DD_01,90,8486222201
+This_study_Cdiff,FMT_11,R16,recipient-before,DT001,FMT_DD_01,0,7606254972
+This_study_Cdiff,FMT_12,R16,recipient-after,DT001,FMT_DD_01,7,7074757553
+This_study_Cdiff,FMT_13,R16,recipient-after,DT001,FMT_DD_01,15,4996578187
+This_study_Cdiff,FMT_14,R16,recipient-after,DT001,FMT_DD_01,30,5501469715
+This_study_Cdiff,FMT_15,R16,recipient-after,DT001,FMT_DD_01,90,4155953027
+This_study_Cdiff,FMT_16,R17,recipient-before,DT019,FMT_DD_19,0,11460528927
+This_study_Cdiff,FMT_17,R17,recipient-after,DT019,FMT_DD_19,7,10741458428
+This_study_Cdiff,FMT_18,R17,recipient-after,DT019,FMT_DD_19,30,7392474922
+This_study_Cdiff,FMT_19,R17,recipient-after,DT019,FMT_DD_19,90,6378302237
+This_study_Cdiff,FMT_20,R18,recipient-before,DT019,FMT_DD_19,0,6264748737
+This_study_Cdiff,FMT_22,R18,recipient-after,DT019,FMT_DD_19,15,2698566106
+This_study_Cdiff,FMT_23,R18,recipient-after,DT019,FMT_DD_19,30,8662911849
+This_study_Cdiff,FMT_24,R18,recipient-after,DT019,FMT_DD_19,90,6485297598
+This_study_Cdiff,FMT_25,R19,recipient-before,DT002,FMT_DD_02,0,18346678056
+This_study_Cdiff,FMT_DD_02,DT002,donor,,,,8246431594
+This_study_Cdiff,FMT_26,R19,recipient-after,DT002,FMT_DD_02,7,10324449899
+This_study_Cdiff,FMT_27,R19,recipient-after,DT002,FMT_DD_02,15,5230125779
+This_study_Cdiff,FMT_28,R19,recipient-after,DT002,FMT_DD_02,30,8958075068
+This_study_Cdiff,FMT_29,R19,recipient-after,DT002,FMT_DD_02,90,8563433733
+This_study_Cdiff,FMT_30,R20,recipient-before,DT002,FMT_DD_02,0,10246402242
+This_study_Cdiff,FMT_31,R20,recipient-after,DT002,FMT_DD_02,7,3428384211
+This_study_Cdiff,FMT_32,R20,recipient-after,DT002,FMT_DD_02,15,8732958657
+This_study_Cdiff,FMT_33,R20,recipient-after,DT002,FMT_DD_02,30,6118920507
+This_study_Cdiff,FMT_34,R20,recipient-after,DT002,FMT_DD_02,90,3278175933
+This_study_Cdiff,FMT_35,R21,recipient-before,,,0,16458283978
+This_study_Cdiff,FMT_37,R21,recipient-after,,,15,9083093721
+This_study_Cdiff,FMT_38,R21,recipient-after,,,30,6600267525
+This_study_Cdiff,FMT_40,R22,recipient-before,DT002,FMT_DD_02,0,5426891004
+This_study_Cdiff,FMT_41,R22,recipient-after,DT002,FMT_DD_02,7,5660232013
+This_study_Cdiff,FMT_42,R22,recipient-after,DT002,FMT_DD_02,15,5859777004
+This_study_Cdiff,FMT_43,R22,recipient-after,DT002,FMT_DD_02,30,9864987227
+This_study_Cdiff,FMT_44,R22,recipient-after,DT002,FMT_DD_02,90,9704000633
+This_study_MDRB,pR1_230300_t0,pR1_230300,recipient-before,UNIVERSAL DONOR,DONOR3313_pR1_230300,0,8453256685
+This_study_MDRB,pR1_230300_t7,pR1_230300,recipient-after,UNIVERSAL DONOR,DONOR3313_pR1_230300,7,17193605764
+This_study_MDRB,pR1_200409_t0,pR2_200409,recipient-before,UNIVERSAL DONOR,DONOR5120_pR2_200409-pR5_041017,0,13637186071
+This_study_MDRB,pR1_200409_t30,pR2_200409,recipient-after,UNIVERSAL DONOR,DONOR5120_pR2_200409-pR5_041017,30,15129470638
+This_study_MDRB,pR1_200409_t7,pR2_200409,recipient-after,UNIVERSAL DONOR,DONOR5120_pR2_200409-pR5_041017,7,5718746381
+This_study_MDRB,DONOR1118_pR5_010202,FATHER_1118,donor,,,,9286688342
+This_study_IBD,DONOR2646_UNIV290108,UNIVERSAL DONOR,donor,,,,12421677051
+This_study_IBD,DONOR3185_pR3_160304,FATHER_3185,donor,,,,3742683652
+This_study_MDRB,DONOR3313_pR1_230300,UNIVERSAL DONOR,donor,,,,5764861496
+"This_study_IBD,This_study_MDRB",DONOR5120_pR2_200409-pR5_041017,UNIVERSAL DONOR,donor,,,,6705968006
+This_study_MDRB,DONOR6911_pR6_271006,UNIVERSAL DONOR,donor,,,,7021676444
+This_study_IBD,pR3_160304_t0,pR3_160304,recipient-before,FATHER_3185,DONOR3185_pR3_160304,0,3466356154
+This_study_IBD,pR3_160304_t30,pR3_160304,recipient-after,FATHER_3185,DONOR3185_pR3_160304,30,8025863725
+This_study_MDRB,pR4_200508_t0,pR4_200508,recipient-before,UNIVERSAL DONOR,DONOR6911_pR6_271006,0,6594602676
+This_study_MDRB,pR4_200508_t30,pR4_200508,recipient-after,UNIVERSAL DONOR,DONOR6911_pR6_271006,30,7940057003
+This_study_IBD,pR5_010202_t0,pR5_010202,recipient-before,UNIVERSAL DONOR,DONOR5120_pR2_200409-pR5_041017,0,7882818194
+This_study_IBD,pR5_010202_t30,pR5_010202,recipient-after,UNIVERSAL DONOR,DONOR5120_pR2_200409-pR5_041017,30,8140554986
+This_study_MDRB,pR5_041017_t0,pR5_041017,recipient-before,FATHER_1118,DONOR1118_pR5_010202,0,7592467340
+This_study_MDRB,pR5_041017_t30,pR5_041017,recipient-after,FATHER_1118,DONOR1118_pR5_010202,30,6257122229
+This_study_MDRB,pR6_271006_t0,pR6_271006,recipient-before,UNIVERSAL DONOR,DONOR6911_pR6_271006,0,9453483684
+This_study_MDRB,pR6_271006_t30,pR6_271006,recipient-after,UNIVERSAL DONOR,DONOR6911_pR6_271006,30,19274302709
