@@ -1,0 +1,858 @@
+---
+title: "Faecal Microbiota Transplant analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+This Rmarkdown describes the TRACS analysis of the Faecal Microbiota Transplant metagenomic sequencing data originally published in Ianiro et al., 2022
+
+> Ianiro, G. et al. Variability of strain engraftment and predictability of microbiome composition after fecal microbiota transplantation across different diseases. Nat. Med. 28, 1913–1923 (2022).
+  
+
+## Running TRACS
+
+The TRACS align was run on each pair of fastq file using the following command using the GTDB rs207 reference database (Parks et al., 2022).
+
+The following Bash commands accurately describe the execution process for running TRACS. However, they are not configured to run directly from this Rmarkdown document. Instead, these commands were executed separately on a server.
+
+
+TrimGalore was used to filter reads prior to running the TRACS algorithm
+
+```
+trim_galore --length 75 --quality 20 --max_n 3 --gzip --cores 8 example_sample_1.fastq.gz example_sample_2.fastq.gz --output_dir ./trimmed/
+```
+
+Reads from each file including singleton were then combined into a single fastq file
+```
+cat ./trimmed/*trimmed.fq.gz > combined_trimmed_reads.fastq.gz
+```
+
+The TRACS align algorithm was then run on each combined read file as
+
+```
+tracs align -i combined_trimmed_reads.fastq.gz -o out_dir -t 15 --database gtdb-rs207.genomic-reps.dna.k51.sbt.zip --refseqs ./GTDB/gtdb_genomes_reps_r207/ --keep-all
+```
+
+The resulting alignments were then combined into individual species Multiple Sequence Alignments using the TRACS combine command
+
+```
+mkdir combined_alignments
+tracs combine -i * -o combined_alignments/ -t 20
+```
+
+Finally, SNP distances were calculated using the distance command
+
+```
+for f in *_combined.fasta.gz
+do
+prefix=$(basename $f _combined.fasta.gz)
+tracs distance --msa $f -o "${prefix}_distance.csv" --snp_threshold 5000 --filter -t 10
+done
+```
+
+## Load results and generate plots
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(data.table)
+library(ggbeeswarm)
+library(ggthemes)
+library(patchwork)
+library(cutpointr)
+library(GenomicRanges)
+library(dplyr)
+source("./calculate_snp_cutoff.R") # R version of SNP threshold mixture distribution algorithm
+```
+
+Load distances and metadata
+
+```{r}
+meta <- fread("data/ianiro/ianiro_fecal_metadata.csv") %>% as_tibble()
+
+meta_filt <- meta[!(grepl(".*recipient.*", meta$sample_type) & meta$`Donor subject name`==""),] %>%
+  filter(`Sample name` != "DONOR2646_UNIV290108")
+
+sourmash_hits <- fread("./data/ianiro/combined_metadata.csv.gz") %>% as_tibble()
+
+dist_files <- Sys.glob("./data/ianiro/*distance.csv.gz")
+distances <- map_dfr(dist_files, ~{
+  fread(.x, colClasses = c('character', 'character', 'integer', 'integer','integer','integer','integer','integer')) %>% 
+    as_tibble() %>%
+    add_column(species=gsub("_distance.*", "", gsub(".*_distances/", "", .x)), .before=1)
+})
+distances$species <- gsub(".*ianiro/", "", distances$species)
+
+tax <- rbind(fread("./data/bac120_metadata_r207.tsv.gz") %>% as_tibble(),
+             fread("./data/ar53_metadata_r207.tsv.gz") %>% as_tibble())
+  
+tax <- tax %>%
+  add_column(strain=gsub(".*s__", "", tax$gtdb_taxonomy)) %>%
+  add_column(accession2=gsub("^[A-Z]*_", "", tax$accession), .before = 1)
+
+distances$strain <- tax$strain[match(distances$species, tax$accession2)]
+```
+
+Add metadata and relationship between samples. The `filereport_read_run_PRJEB47909_tsv-2.csv` file contains the inferred mapping between accessions in the ENA and the metadata included as supplementary material in Ianiro et al., 2022.
+
+```{r}
+name_map <- fread("./data/ianiro/filereport_read_run_PRJEB47909_tsv-2.csv.gz") %>% as_tibble()
+
+distances$sampleA_alt <- name_map$`Assumed sample from Supp Table 2`[match(distances$sampleA, name_map$sample_title)]
+distances$sampleB_alt <- name_map$`Assumed sample from Supp Table 2`[match(distances$sampleB, name_map$sample_title)]
+
+distances_filt <- distances %>% 
+  filter(sampleA_alt %in% meta_filt$`Sample name`) %>%
+  filter(sampleB_alt  %in% meta_filt$`Sample name`) 
+
+distances_filt$relationship <- map2_chr(distances_filt$sampleA_alt, distances_filt$sampleB_alt, ~{
+  
+  cA <- meta_filt$`Subject code`[meta_filt$`Sample name`==.x]
+  cB <- meta_filt$`Subject code`[meta_filt$`Sample name`==.y]
+  tA <- meta_filt$sample_type[meta_filt$`Sample name`==.x]
+  tB <- meta_filt$sample_type[meta_filt$`Sample name`==.y]
+  dA <- meta_filt$`Donor sample name`[meta_filt$`Sample name`==.x]
+  dB <- meta_filt$`Donor sample name`[meta_filt$`Sample name`==.y]
+  
+  if (tA=="recipient-after" & dA==.y) {
+    return("Donor/recipient")
+  }
+  if (tB=="recipient-after" & dB==.x) {
+    return("Donor/recipient")
+  }
+  
+  if (cA==cB){
+    if (all(c("recipient-after", "recipient-before") %in% c(tA, tB))){
+      return("Recipient before/after FMT")
+    }
+  }
+  
+  if (cA==cB){
+    if (cA=="UNIVERSAL DONOR"){
+      return("UNIVERSAL DONOR")
+    } else if (all(c(tA, tB)=="recipient-after")) {
+      return("Same recipient after FMT")
+    } else {
+      return(paste0("Same subject: ", paste(sort(c(tA,tB)), collapse = '/')))  
+    }
+  }
+  
+  if (all(c(tA, tB)=="recipient-after") & (dB==dA)) {
+    return("Same donor, different recipient")  
+  }
+  
+  return(paste0("Other: ", paste(sort(c(tA,tB)), collapse = '/')))
+  
+})
+
+distances_filt$day_diff <- map2_int(distances_filt$sampleA_alt, distances_filt$sampleB_alt, ~{
+  
+  cA <- meta_filt$`Subject code`[meta_filt$`Sample name`==.x]
+  cB <- meta_filt$`Subject code`[meta_filt$`Sample name`==.y]
+  
+  if (cA!=cB) {
+    return(NA)
+  }
+  
+  return(abs(meta_filt$time_point_days[meta_filt$`Sample name`==.x] - meta_filt$time_point_days[meta_filt$`Sample name`==.y]))
+  
+})
+
+
+distances_filt$same_study <- map2_lgl(distances_filt$sampleA_alt, distances_filt$sampleB_alt, ~{
+  
+  sA <- meta_filt$`Study dataset`[meta_filt$`Sample name`==.x]
+  sB <- meta_filt$`Study dataset`[meta_filt$`Sample name`==.y]
+  
+  return(any(unlist(str_split(sA, ',')) %in% unlist(str_split(sB, ','))))
+})
+
+distances_filt$`filtered SNP distance` <- as.numeric(distances_filt$`filtered SNP distance`)
+
+distances_filt <- distances_filt %>% filter(relationship!="UNIVERSAL DONOR")
+```
+
+We can now infer species specific SNP thresholds using the mixture distribution method. We use samples from the same patient with 180 days as the 'close' pairs and samples from separate donors as the distant pairs.
+
+```{r}
+within <- distances_filt %>%
+  filter(relationship=="Same recipient after FMT") %>%
+  filter(day_diff<180)
+
+between_donor <-  distances_filt %>%
+  filter(relationship=="Other: donor/donor")
+  
+combined <- mixture_snp_cutoff(within$`filtered SNP distance`,
+                               between_donor$`filtered SNP distance`,
+                               upper.tail=1-1e-3)
+
+overall_snp_threshold <- combined$snp_threshold*3
+```
+
+Plot number of shared strains given the calculated thresholds by relationship.
+
+```{r}
+# calculate the number of pairwise in relationships
+distances_filt_thresh <- distances_filt
+distances_filt_thresh$`filtered SNP distance`[distances_filt_thresh$`filtered SNP distance` > overall_snp_threshold] <- NA
+
+count_distances_filt <- distances_filt_thresh %>% 
+  # filter(!same_study) %>%
+  dplyr::group_by(base::paste(sampleA, sampleB)) %>%
+  dplyr::summarise(
+    n=sum(!is.na(`filtered SNP distance`)),
+    relationship=unique(relationship),
+    same_study=unique(same_study)
+  )
+
+count_distances_filt$relationship[grepl(".*Other.*", count_distances_filt$relationship) & !count_distances_filt$same_study] <- "Unrelated participant (different study)"
+count_distances_filt$relationship[grepl(".*Other.*", count_distances_filt$relationship) & count_distances_filt$same_study] <- "Unrelated participant (same study)"
+
+count_distances_filt$relationship <- factor(count_distances_filt$relationship,
+                                            levels = rev(c('Unrelated participant (different study)',
+                                                       'Unrelated participant (same study)',
+                                                       'Recipient before/after FMT', 
+                                                       'Same donor, different recipient',
+                                                       'Same recipient after FMT',
+                                                        'Donor/recipient'
+                                                       )))
+
+ggplot(count_distances_filt %>%
+         filter(!relationship %in% c("Unrelated participant (same study)", "Same recipient after FMT")), 
+       aes(x=n, y=relationship, colour=relationship)) +
+  geom_boxplot(outlier.colour = NA) +
+  geom_quasirandom(groupOnX = FALSE) +
+  theme_clean(base_size = 21, base_family = "Arial") +
+  theme(plot.background = element_blank(), legend.position = 'none') +
+  scale_colour_manual(values = c("#4575b4", "#91bfdb", "#abd9e9", "#d73027")) +
+  xlab("Number of shared strains") +
+  ylab("")
+
+# ggsave("figures/fmt_shared_strain_counts.png", width = 10, height = 7)
+# ggsave("figures/fmt_shared_strain_counts.pdf", width = 10, height = 7,device = cairo_pdf)
+
+```
+
+We calculate engraftment rates assuming a Binomial distribution
+
+```{r}
+
+donor_pair_count <- meta_filt %>% 
+  filter(`Donor sample name`!="") %>%
+  group_by(`Donor sample name`) %>%
+  summarise(
+    npair = length(unique(`Subject code`))
+  )
+
+donor_pair_count$alt_name <- name_map$sample_title[match(donor_pair_count$`Donor sample name`, name_map$`Assumed sample from Supp Table 2`)]
+
+species_pair_counts <- map2_dfr(donor_pair_count$alt_name, donor_pair_count$npair, ~{
+  tibble(
+    species=(sourmash_hits %>% filter(sample==.x) %>% filter(!is.na(frac_N)))$accession,
+    count=.y
+  )
+}) %>%
+  group_by(species) %>%
+  summarise(
+    total=sum(count)
+  )
+
+
+donor_recipient_dists <- distances_filt_thresh %>%
+  filter(relationship=="Donor/recipient") 
+
+
+donor_recipient_dists$recipient <- map2_chr(donor_recipient_dists$sampleA_alt, donor_recipient_dists$sampleB_alt, ~{
+  
+  cA <- meta_filt$`Subject code`[meta_filt$`Sample name`==.x]
+  cB <- meta_filt$`Subject code`[meta_filt$`Sample name`==.y]
+  dA <- meta_filt$`Donor sample name`[meta_filt$`Sample name`==.x]
+  dB <- meta_filt$`Donor sample name`[meta_filt$`Sample name`==.y]
+
+  if (dA==""){
+    return(cB)
+  } else if (dB=="") {
+    return(cA)
+  } else{
+    return(NA)
+  }
+
+})
+
+
+count_distances_filt <- donor_recipient_dists %>%
+  filter(!is.na(`filtered SNP distance`)) %>%
+  group_by(species, strain) %>%
+  summarise(
+    n=length(unique(recipient))
+  )
+
+count_distances_filt$total <- species_pair_counts$total[match(count_distances_filt$species, species_pair_counts$species)]
+
+
+## Maximum likelihood approach
+
+count_distances_filt$ml_rate <- map2_dbl(count_distances_filt$n, count_distances_filt$total, ~ binom.test(x = .x, n = .y, conf.level = 0.95)$estimate)
+count_distances_filt$ml_lower <- map2_dbl(count_distances_filt$n, count_distances_filt$total, ~ binom.test(x = .x, n = .y, conf.level = 0.95)$conf.int[[1]])
+count_distances_filt$ml_upper <- map2_dbl(count_distances_filt$n, count_distances_filt$total, ~ binom.test(x = .x, n = .y, conf.level = 0.95)$conf.int[[2]])
+count_distances_filt$strain <- factor(count_distances_filt$strain, levels = count_distances_filt$strain[order(count_distances_filt$ml_rate)])
+
+count_distances_filt <- count_distances_filt %>% filter(total>=10)
+
+tax$phylum <- gsub("_.*", "", gsub(";.*", "", gsub(".*p__", "", tax$gtdb_taxonomy)))
+count_distances_filt$phylum <- tax$phylum[match(count_distances_filt$species, tax$accession2)]
+
+cols <- setNames(c('#377eb8','#4daf4a','#984ea3','#ff7f00'),
+                 c("Firmicutes", "Proteobacteria", "Actinobacteriota", "Bacteroidota"))
+
+
+
+gg1 <- ggplot(count_distances_filt, aes(x=ml_rate, y=strain)) +
+  geom_point(size=2) +
+  geom_errorbarh(aes(xmin=ml_lower, xmax=ml_upper)) +
+  scale_y_discrete(
+    breaks = count_distances_filt$strain,
+    labels = setNames(count_distances_filt$strain, count_distances_filt$phylum)
+  ) +
+  theme_clean(base_size = 16, base_family = "Arial") +
+  theme(plot.background = element_blank(),
+        legend.position = 'none') +
+  theme(axis.text.y = element_text(color = cols[count_distances_filt$phylum[!duplicated(count_distances_filt$strain)]])) +
+  xlab("Engraftment rate") +
+  ylab("Species (GTDB)")
+
+gg1
+
+gg2 <- ggplot(count_distances_filt, aes(x=total, y=strain)) +
+  geom_col() +
+  theme_clean(base_size = 16, base_family = "Arial") +
+  theme(plot.background = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank()
+        ) +
+  xlab("Total pairs")
+
+
+gg1 + gg2 + patchwork::plot_layout(nrow = 1)
+
+
+# ggsave("./figures/species_engraftment_rates.png", width = 10, height = 7)
+# ggsave("./figures/species_engraftment_rates.pdf", width = 10, height = 7, device = cairo_pdf)
+```
+
+## Comparison with other tools
+
+
+### StrainPhlAn
+
+MetaPhlAn was run on each sample as
+
+```
+bn=$(basename $out_dir)
+metaphlan combined_trimmed_reads.fastq.gz --input_type fastq -s ${bn}.sam.bz2 --bowtie2out ${bn}.bowtie2.bz2 -o ${bn}_sphlan_profiled.tsv --nproc 15
+```
+
+Markers where then extracted as
+
+```
+sample2markers.py -i ${bn}.sam.bz2 -o sphlan_consensus_markers -n 8
+```
+
+For each SGB found in the `*sphlan_profiled.tsv` files each corresponding marker was then extracted using
+
+```
+extract_markers.py -c t__marker -o sphlan_db_markers
+```
+
+StrainPhlAn was then run for each SGB using the following command
+
+```
+strainphlan -s sphlan_consensus_markers/*.pkl -m sphlan_db_markers/t__marker.fna -o sphlan_output -c t__marker --marker_in_n_samples 1 --sample_with_n_markers 10 --phylophlan_mode accurate --nprocs 8
+```
+
+### InStrain
+
+InStrain was run on each of the combined and filtered read files using the following command.
+
+```
+bn=$(basename $out_dir)
+
+bowtie2 -p ${NCPUS} -x ./instrainDB/UHGG_reps.fasta.bt2 -U ./instrainDB/combined_trimmed_reads.fastq.gz -S ./${bn}.sam
+
+inStrain profile ./${bn}.sam ./instrainDB/UHGG_reps.fasta -o ./${bn}.IS -p 10 -g ./instrainDB/UHGG_reps.genes.fna -s ./instrainDB/UHGG_reps.stb --database_mode --pairing_filter all_reads
+```
+
+The comparison between each sample was then run as
+
+```
+inStrain compare -i *_instrain.IS -s ./instrainDB/UHGG_reps.stb -p 50 -o ianiro.UHGG_reps.IS.COMPARE --database_mode
+```
+
+### StrainGE
+
+A StrainGE database of *Bifidobacterium* references was built following the user manual with the following commands. The resulting database is attached to this repository a zip file in the initial release.
+
+```
+mkdir ref_genomes
+ncbi-genome-download bacteria -l complete -g Bifidobacterium -F fasta,assembly-report,assembly-stats -o ref_genomes
+    
+mkdir strainge_db
+python3 prepare_strainge_db.py ref_genomes/human_readable -s -o strainge_db > strainge_db/references_meta.tsv
+    
+for f in strainge_db/*.fa.gz; do straingst kmerize -o ${f%.fa.gz}.hdf5 $f; done;
+
+straingst kmersim --all-vs-all -t 4 -S jaccard -S subset strainge_db/*.hdf5 > similarities.tsv
+
+straingst cluster -i similarities.tsv -d -C 0.99 -c 0.90 --clusters-out clusters.tsv strainge_db/*.hdf5 > references_to_keep.txt
+    
+straingst createdb -f references_to_keep.txt -o pan-genome-db.hdf5
+```
+
+StrainGST was run each sample using the following commands
+
+```
+bn=$(basename $out_dir)
+straingst kmerize -k 23 -o ./${bn}.hdf5 ${out_dir}/combined_trimmed_reads.fastq.gz
+straingst run -O -o ./${bn} ./pan-genome-db.hdf5 ./${bn}.hdf5
+
+bwa mem -I 300 -t $NCPUS ./Bifidobacterium_refs_concat.fasta ${out_dir}/combined_trimmed_reads.fastq.gz | samtools sort -@ 8 -O BAM -o ./${bn}.bam -
+samtools index /nfs/users/nfs_g/gt4/lustre/tracm-data/ianiro/strainge/${bn}.bam
+
+straingr call ./Bifidobacterium_refs_concat.fasta /nfs/users/nfs_g/gt4/lustre/tracm-data/ianiro/strainge/${bn}.bam --hdf5-out ./${bn}_calls.hdf5 --summary ./${bn}_summary.tsv
+```
+
+Each pair of samples was then compared using the command
+
+```
+straingr compare SampleA_strainge_calls.hdf5 SampleB_strainge_calls.hdf5 -o SampleA_strainge-SampleB_strainge.summary.tsv
+```
+
+## Load results and generate plots
+
+```{r}
+distances_filt_comp <- distances_filt
+
+distances_filt_comp$pair <- map2_chr(distances_filt_comp$sampleA, distances_filt_comp$sampleB, ~{ 
+  paste(sort(c(.x,.y)), collapse = ' ')
+  })
+
+distances_filt_comp$relationship[grepl(".*Other.*", distances_filt_comp$relationship) & !distances_filt_comp$same_study] <- "Unrelated participant (different study)"
+distances_filt_comp$relationship[grepl(".*Other.*", distances_filt_comp$relationship) & distances_filt_comp$same_study] <- "Unrelated participant (same study)"
+
+instrain_dists <- read_tsv("./data/ianiro/instrain_ianiro/output/ianiro.UHGG_reps.IS.COMPARE_genomeWide_compare.tsv.gz")
+instrain_meta <- read_tsv("./data/genomes-nr_metadata.tsv.gz")
+instrain_dists$sampleA <- gsub("_instrain.*", "", instrain_dists$name1)
+instrain_dists$sampleB <- gsub("_instrain.*", "", instrain_dists$name2)
+
+instrain_dists$pair <- map2_chr(instrain_dists$sampleA, instrain_dists$sampleB, ~{ 
+  paste(sort(c(.x,.y)), collapse = ' ')
+  })
+
+instrain_dists$relationship <- distances_filt_comp$relationship[match(instrain_dists$pair, distances_filt_comp$pair)]
+instrain_dists$same_study <- distances_filt_comp$same_study[match(instrain_dists$pair, distances_filt_comp$pair)]
+instrain_dists <- instrain_dists %>% filter(!is.na(relationship))
+instrain_dists$relationship[grepl(".*Other.*", instrain_dists$relationship) & !instrain_dists$same_study] <- "Unrelated participant (different study)"
+instrain_dists$relationship[grepl(".*Other.*", instrain_dists$relationship) & instrain_dists$same_study] <- "Unrelated participant (same study)"
+instrain_dists$species <- gsub(".*s__", "", 
+                               instrain_meta$Lineage[match(gsub("\\.fna", "", instrain_dists$genome), instrain_meta$Genome)])
+
+```
+
+
+```{r}
+sphlan_dists <- read_csv("./data/ianiro/combined_sphlan_dists.csv")
+sphlan_aln_dist <- fread("./data/meta_SGB_lengths.csv") %>% as_tibble() 
+sphlan_dists$sampleA <- gsub("_sphlan", "", sphlan_dists$sampleA)
+sphlan_dists$sampleB <- gsub("_sphlan", "", sphlan_dists$sampleB)
+
+
+sgb_gtdb_mapping <- read_tsv("./data/ianiro/mpa_vOct22_CHOCOPhlAnSGB_202212_SGB2GTDB.tsv.gz", col_names = c('SGB', 'GTDB'))
+sphlan_dists$gtdb_species <- gsub(".*s__", "", sgb_gtdb_mapping$GTDB[match(gsub("t__", "", sphlan_dists$tag), sgb_gtdb_mapping$SGB)])
+sphlan_dists$pair_species <- paste(sphlan_dists$pair, sphlan_dists$gtdb_species)
+
+sphlan_dists$pair <- map2_chr(sphlan_dists$sampleA, sphlan_dists$sampleB, ~{ 
+  paste(sort(c(.x,.y)), collapse = ' ')
+  })
+
+sphlan_dists$relationship <- distances_filt_comp$relationship[match(sphlan_dists$pair, distances_filt_comp$pair)]
+sphlan_dists$same_study <- distances_filt_comp$same_study[match(sphlan_dists$pair, distances_filt_comp$pair)]
+sphlan_dists <- sphlan_dists %>% filter(!is.na(relationship))
+
+sphlan_dists$relationship[grepl(".*Other.*", sphlan_dists$relationship) & !sphlan_dists$same_study] <- "Unrelated participant (different study)"
+sphlan_dists$relationship[grepl(".*Other.*", sphlan_dists$relationship) & sphlan_dists$same_study] <- "Unrelated participant (same study)"
+
+temp <- sphlan_dists %>%
+ group_by(tag) %>%
+ summarise(
+     count=length(unique(pair))
+ ) %>% arrange(-count)
+sum(temp$count)
+
+
+strainge_contig_dists <- read_tsv("./data/ianiro/combined_strainge_summary_ianiro.tsv.gz")
+strainge_contig_dists$species <- strainge_contig_dists$ref
+strainge_contig_dists$species <- gsub("Bifi", "Bifidobacterium",
+  gsub("_", " ", 
+              sub("(_[^_]+)_.+", "\\1", strainge_contig_dists$species)
+              ))
+strainge_contig_dists$species[strainge_contig_dists$ref=="Bifi_sp._TKU"] <- "Bifidobacterium bifidum"
+all(unique(strainge_contig_dists$species) %in% sort(unique(tax$strain[grepl("Bifi", tax$strain)])))
+
+
+strainge_dists <- strainge_contig_dists %>%
+  group_by(sample1, sample2, ref, species) %>%
+  summarise(
+      snpdist=sum(common-sharedAlleles),
+      common=sum(common),
+      common_percentage = sum(common)/sum(length)
+    ) %>%
+  filter(common_percentage>0.10)
+
+strainge_dists$sample1 <- gsub("_strainge.*", "", strainge_dists$sample1)
+strainge_dists$sample2 <- gsub("_strainge.*", "", strainge_dists$sample2)
+strainge_dists$pair <- map2_chr(strainge_dists$sample1, strainge_dists$sample2, ~{ 
+  paste(sort(c(.x,.y)), collapse = ' ')
+  })
+
+strainge_dists$relationship <- distances_filt_comp$relationship[match(strainge_dists$pair, distances_filt_comp$pair)]
+strainge_dists$same_study <- distances_filt_comp$same_study[match(strainge_dists$pair, distances_filt_comp$pair)]
+strainge_dists <- strainge_dists %>% filter(!is.na(relationship))
+
+strainge_dists$relationship[grepl(".*Other.*", strainge_dists$relationship) & !strainge_dists$same_study] <- "Unrelated participant (different study)"
+strainge_dists$relationship[grepl(".*Other.*", strainge_dists$relationship) & strainge_dists$same_study] <- "Unrelated participant (same study)"
+```
+
+Merge results from each tool and calculate SNP thresholds using both the mixture based approach introduces in TRACS and the Youden method described in Valles-Colomer et al., 2023.
+
+```{r}
+pdf <- rbind(
+  tibble(
+    species=sphlan_dists$gtdb_species,
+    distance=sphlan_dists$distance,
+    relationship=sphlan_dists$relationship,
+    method='StrainPhlAn'
+  ),
+  tibble(
+    species=strainge_dists$species,
+    distance=strainge_dists$snpdist,
+    relationship=strainge_dists$relationship,
+    method='strainGE'
+  ),
+  tibble(
+    species=distances_filt_comp$strain,
+    distance=distances_filt_comp$`filtered SNP distance`,
+    relationship=distances_filt_comp$relationship,
+    method="TRACS"
+  ),
+  tibble(
+    species=instrain_dists$species,
+    distance=instrain_dists$population_SNPs,
+    relationship=instrain_dists$relationship,
+    method="Instrain"
+  )
+) %>% 
+    filter(relationship %in% c("Same recipient after FMT", 
+                                    "Unrelated participant (different study)"))
+
+method_thresholds <- pdf %>% 
+  group_by(method) %>%
+  group_map(~{
+    tibble(
+      method=unique(.x$method),
+      `SNP threshold\nalgorithm` = c("Mixture", "Youden"),
+      threshold = c(
+        mixture_snp_cutoff(.x$distance[.x$relationship!="Unrelated participant (different study)"],
+                           .x$distance[.x$relationship=="Unrelated participant (different study)"],
+                               upper.tail=1-1e-3)$snp_threshold*3,
+        cutpointr::cutpointr(x=.x$distance, class=.x$relationship, metric=cutpointr::youden, method=cutpointr::maximize_metric)$optimal_cutpoint
+      )
+    )
+  }, .keep = TRUE) %>% bind_rows()
+
+pdf$bifi <- map_chr(pdf$species, ~{
+  if (grepl("Bifidobacterium.*", .x)){
+    if (.x %in% c("Bifidobacterium longum", "Bifidobacterium infantis")){
+      return(.x)
+    } else {
+      return("Other Bifidobacterium")
+    }
+  } else {
+    return("Other species")
+  }
+})
+
+mixture_thresholds <- method_thresholds %>% filter(`SNP threshold\nalgorithm`=="Mixture")
+pdf$threshold <- mixture_thresholds$threshold[match(pdf$method, mixture_thresholds$method)]
+```
+
+Calculate false positives (transmissions between very unlikely pairs).
+
+```{r}
+false_pos_df <- map_dfr(unique(method_thresholds$`SNP threshold\nalgorithm`), ~{
+  temp <- method_thresholds %>% filter(`SNP threshold\nalgorithm`==.x)
+  return(pdf %>% 
+           add_column(`threshold algorithm`=.x) %>%
+           add_column(threshold2=temp$threshold[match(pdf$method, temp$method)]) %>%
+           group_by(method, `threshold algorithm`, relationship) %>%
+           summarise(
+             nfp = sum(distance <= threshold2),
+             total = length(distance),
+             frac = nfp/length(distance)
+           )
+  )
+})
+
+
+false_pos_rate <- false_pos_df %>% filter(relationship=="Unrelated participant (different study)")
+  
+false_pos_df$relationship <- factor(false_pos_df$relationship, levels = c(
+  "Unrelated participant (different study)", "Same recipient after FMT"
+))
+
+false_pos_df$`threshold algorithm` <- factor(false_pos_df$`threshold algorithm`, levels = c(
+  "Youden", "Mixture"
+))
+
+ggplot(false_pos_df %>% 
+         filter(method!="strainGE") %>%
+         filter(`threshold algorithm`=="Mixture")
+       , aes(x=interaction(method,relationship), y=nfp, fill=relationship)) +
+  geom_col(position = 'stack') +
+  facet_wrap(~method, nrow = 1, strip.position = "bottom", scales = 'free_x') +
+  # scale_alpha_manual(values = c(0.5, 1)) +
+  scale_fill_manual(values = c("red", "black")) +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank())  +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside",
+        axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.title.x = element_blank(),
+        legend.background = element_blank()) +
+  ylab("Number of shared strains") +
+  xlab("")
+
+# ggsave("./figures/fmt_false_pos_hist.png", width = 10, height = 5)
+# ggsave("./figures/fmt_false_pos_hist.pdf", width = 10, height = 5, device = cairo_pdf)
+
+
+ggplot(false_pos_df %>% 
+         filter(method!="strainGE")
+       , aes(x=interaction(method,relationship), y=nfp, fill=relationship, linetype=`threshold algorithm`, 
+             colour=`threshold algorithm`)) +
+  geom_bar(stat='identity', position = 'stack', aes(alpha=`threshold algorithm`)) +
+  facet_wrap(~method, nrow = 1, strip.position = "bottom", scales = 'free_x') +
+  scale_alpha_manual(values = c(0.2, 1)) +
+  scale_color_manual(values = c("black","black")) +
+  scale_linetype_manual(values = c("dashed", "blank")) +
+  scale_fill_manual(values = c("red", "black")) +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank())  +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside",
+        axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.title.x = element_blank(),
+        legend.background = element_blank()) +
+  ylab("Number of shared strains") +
+  xlab("")
+
+# ggsave("./figures/fmt_false_pos_hist_youden.png", width = 10, height = 5)
+# ggsave("./figures/fmt_false_pos_hist_youden.pdf", width = 10, height = 5, device = cairo_pdf)
+```
+
+Focus on *Bifidobacterium* species and consider all tools including StrainGE.
+
+```{r}
+bifi_method_thresholds <- pdf %>% 
+  filter(grepl("Bifidobacterium", species)) %>%
+  group_by(method) %>%
+  group_map(~{
+    tibble(
+      method=unique(.x$method),
+      `SNP threshold\nalgorithm` = c("Mixture", "Youden"),
+      threshold = c(
+        mixture_snp_cutoff(.x$distance[.x$relationship!="Unrelated participant (different study)"],
+                           .x$distance[.x$relationship=="Unrelated participant (different study)"],
+                               upper.tail=1-1e-3)$snp_threshold*3,
+        cutpointr::cutpointr(x=.x$distance, class=.x$relationship, metric=youden, method=maximize_metric)$optimal_cutpoint
+      )
+    )
+  }, .keep = TRUE) %>% bind_rows()
+
+
+ggplot(pdf %>% 
+         filter(relationship=="Same recipient after FMT") %>%
+         filter(grepl("Bifidobacterium", species)) %>%
+         filter(`distance`<500), 
+       aes(x=`distance`)) +
+  geom_histogram(binwidth = 20, aes(fill=bifi)) +
+  geom_vline(data = bifi_method_thresholds %>% filter(`SNP threshold\nalgorithm`=="Mixture"), 
+             aes(xintercept = threshold + 0.5), size=0.5) +
+  ggh4x::facet_grid2(~method, axes = "all", remove_labels = "all", scales = "free_y") +
+  scale_colour_manual(values = c('#4daf4a','#377eb8')) +
+  scale_fill_manual(values = c("red", "#ff7f00", "#984ea3")) +
+  theme_clean(base_size = 20) +
+  theme(plot.background = element_blank())  +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside", 
+        legend.background = element_blank()) +
+  xlab("SNP distance") +
+  ylab("Count")
+
+# ggsave("./figures/Bifi_longum_fmt_hist.png", width = 15, height = 7)
+# ggsave("./figures/Bifi_longum_fmt_hist.pdf", width = 15, height = 7, device = cairo_pdf)
+```
+
+Plot example of transmission detected by only TRACS. Here we plot the allele frequencies in a region that is covered by the StrainPhlAn marker genes.
+
+```{r}
+sphlan_markers <- read_tsv("./data/ianiro/paired_vis/blast_hit_results.txt", 
+         col_names = c("qseqid", "sseqid", "pident", "length", "mismatch", "gapopen",
+                   "qstart", "qend", "sstart", "send", "evalue", "bitscore")) %>%
+  arrange(-bitscore)
+sphlan_markers <- sphlan_markers[!duplicated(sphlan_markers$qseqid),] %>%
+  arrange(sstart)
+
+
+tracm_SFMT_13 <- fread("./data/ianiro/paired_vis/SFMT_13_t0_combined_trimmed_reads.fastq_ref_GCF_900636965.1_pileup.txt.gz",
+                            col.names = c("contig",'pos','ref','alt','count')) %>%
+  filter(ref!=alt)
+
+tracm_SFMT_13$splitcounts <- str_split(tracm_SFMT_13$count, ":")
+tracm_SFMT_13$splitcounts <- map(tracm_SFMT_13$splitcounts, ~ { colSums(matrix(as.numeric(str_split(.x[-1], ',', simplify = TRUE)), 
+                                                   nrow=length(.x[-1])),na.rm = TRUE) })
+tracm_SFMT_13$allele <-  str_split(tracm_SFMT_13$alt, ",")
+tracm_SFMT_13$freq <- map(tracm_SFMT_13$splitcounts, ~ .x/sum(.x))
+
+tracm_SFMT_13 <- tracm_SFMT_13[, .(counts = unlist(splitcounts),
+                  allele = unlist(allele),
+                  freq = unlist(freq)), by = .(pos)]
+
+# Convert 'pos' and segments into GRanges objects
+gr_pos <- GRanges(seqnames = rep(1, nrow(tracm_SFMT_13)), ranges = IRanges(start=tracm_SFMT_13$pos, end=tracm_SFMT_13$pos))
+gr_segments <- GRanges(seqnames = rep(1, nrow(sphlan_markers)), ranges = IRanges(start=map2_dbl(sphlan_markers$sstart,
+                                                                                         sphlan_markers$send, ~ min(.x,.y)),
+                                                                          end=map2_dbl(sphlan_markers$sstart,
+                                                                                         sphlan_markers$send, ~ max(.x,.y))))
+
+# Find overlaps
+hits <- findOverlaps(gr_pos, gr_segments)
+
+# Extract overlapping segment IDs
+overlapping_segs <- data.table(pos = start(gr_pos)[queryHits(hits)], 
+                               overlap_segments = sphlan_markers$qseqid[subjectHits(hits)])
+overlapping_segs <- overlapping_segs[!duplicated(pos)]
+
+tracm_SFMT_13_markers <- merge(tracm_SFMT_13, overlapping_segs, by = "pos", all.x = TRUE, all.y = FALSE)
+tracm_SFMT_13_markers <- tracm_SFMT_13_markers[!is.na(overlap_segments)]
+
+
+
+
+tracm_SR6_271006 <- fread("./data/ianiro/paired_vis/SR6_271006_t0_combined_trimmed_reads.fastq_ref_GCF_900636965.1_pileup.txt.gz",
+                            col.names = c("contig",'pos','ref','alt','count')) %>%
+  filter(ref!=alt)
+
+tracm_SR6_271006$splitcounts <- str_split(tracm_SR6_271006$count, ":")
+tracm_SR6_271006$splitcounts <- map(tracm_SR6_271006$splitcounts, ~ { 
+  colSums(matrix(as.numeric(str_split(.x[-1], ',', simplify = TRUE)), 
+                                                   nrow=length(.x[-1])),na.rm = TRUE) })
+tracm_SR6_271006$allele <-  str_split(tracm_SR6_271006$alt, ",")
+tracm_SR6_271006$freq <- map(tracm_SR6_271006$splitcounts, ~ .x/sum(.x))
+
+tracm_SR6_271006 <- tracm_SR6_271006[, .(counts = unlist(splitcounts),
+                  allele = unlist(allele),
+                  freq = unlist(freq)), by = .(pos)]
+
+# Convert 'pos' and segments into GRanges objects
+gr_pos <- GRanges(seqnames = rep(1, nrow(tracm_SR6_271006)), ranges = IRanges(start=tracm_SR6_271006$pos, end=tracm_SR6_271006$pos))
+gr_segments <- GRanges(seqnames = rep(1, nrow(sphlan_markers)), ranges = IRanges(start=map2_dbl(sphlan_markers$sstart,
+                                                                                         sphlan_markers$send, ~ min(.x,.y)),
+                                                                          end=map2_dbl(sphlan_markers$sstart,
+                                                                                         sphlan_markers$send, ~ max(.x,.y))))
+
+# Find overlaps
+hits <- findOverlaps(gr_pos, gr_segments)
+
+# Extract overlapping segment IDs
+overlapping_segs <- data.table(pos = start(gr_pos)[queryHits(hits)], 
+                               overlap_segments = sphlan_markers$qseqid[subjectHits(hits)])
+overlapping_segs <- overlapping_segs[!duplicated(pos)]
+
+tracm_SR6_271006_markers <- merge(tracm_SR6_271006, overlapping_segs, by = "pos", all.x = TRUE, all.y = FALSE)
+tracm_SR6_271006_markers <- tracm_SR6_271006_markers[!is.na(overlap_segments)]
+
+
+# Consensus
+
+tracm_SFMT_13_consensus <- tracm_SFMT_13[order(-counts)]
+tracm_SFMT_13_consensus <- tracm_SFMT_13_consensus[!duplicated(pos)]
+
+tracm_SR6_271006_consensus <- tracm_SR6_271006[order(-counts)]
+tracm_SR6_271006_consensus <- tracm_SR6_271006_consensus[!duplicated(pos)]
+
+drop_pos <- tracm_SR6_271006_consensus$pos[paste(tracm_SR6_271006_consensus$pos,
+                                     tracm_SR6_271006_consensus$allele) %in% 
+                                 paste(tracm_SFMT_13_consensus$pos,
+                                       tracm_SFMT_13_consensus$allele)]
+
+drop_pos <- unique(c(drop_pos,
+              tracm_SR6_271006$pos[!tracm_SR6_271006$pos %in% tracm_SFMT_13$pos],
+              tracm_SFMT_13$pos[!tracm_SFMT_13$pos %in% tracm_SR6_271006$pos]))
+
+
+pdf <- rbind(tracm_SFMT_13_markers %>% 
+               filter(!pos %in% drop_pos) %>%
+               add_column(sample='tracm_SFMT_13_t0'), 
+             tracm_SR6_271006_markers %>% 
+               filter(!pos %in% drop_pos) %>%
+               add_column(sample='SR6_271006_t0'))
+
+
+pdf$marker <- gsub("UniRef90_", "", gsub("\\|.*", "", pdf$overlap_segments))
+pdf$sample <- gsub("tracm_", "", pdf$sample)
+
+
+both <- paste(tracm_SFMT_13_markers$pos, tracm_SFMT_13_markers$allele)[paste(tracm_SFMT_13_markers$pos, 
+                                                                             tracm_SFMT_13_markers$allele) %in%
+                                                                         paste(tracm_SR6_271006_markers$pos, 
+                                                                              tracm_SR6_271006_markers$allele
+                                                                              )[tracm_SR6_271006_markers$freq>0.01] &
+                                                                         tracm_SFMT_13_markers$freq>0.01]
+pdf$both <- paste(pdf$pos, pdf$allele) %in% both
+pdf <- pdf[str_length(pdf$allele)<=1,]
+
+ggplot(pdf %>% 
+         filter(pos>1.002e6, pos<1.003e6, freq>0.01), 
+       aes(x=pos, y=freq, col=allele, alpha=both)) +
+  geom_label(aes(label=allele), 
+             size=5, 
+             fontface = "bold",
+             label.size=0) +  
+  ggh4x::facet_wrap2(~sample, axes = "all", remove_labels = "all", scales = "free_x", ncol = 1) +
+  scale_color_brewer(type = 'qual', palette = 6) +
+  scale_alpha_manual(values = c(0.4,1)) +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust=1),
+        legend.background = element_blank(), legend.title = element_blank()) +
+  xlab("Position in reference") +
+  ylab("Allele frequency") +
+  guides(alpha='none')
+
+
+# ggsave("./figures/fmt_example_same_donor_diff_recipient_AOA1JC697.png", width = 10, height = 7)
+# ggsave("./figures/fmt_example_same_donor_diff_recipient_AOA1JC697.pdf", width = 10, height = 7, device = cairo_pdf)
+```
+
+
+
+
+

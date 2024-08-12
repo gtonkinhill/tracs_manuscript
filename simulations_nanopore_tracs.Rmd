@@ -1,0 +1,111 @@
+---
+title: "Additional simulations of Nanopore data"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+Simulate reads using BadRead
+
+```
+for rep in {1..10}
+do
+    for d in 5 50 500
+    do
+        python ./scripts/tracs-sim.py -t 5 --genomes ./ref_genomes/*.fna --tran-genome ./ref_genomes/6259_6#1.fna -d ${d} -b 10000 -n 2 -o nano_sim_d${d}_rep${rep} --prefix nano_sim_d${d}_rep${rep} --platform nanopore
+    done
+done
+```
+
+Run Trac'm
+
+For each simulation, we run Trac'm as
+
+```
+tracs pipe -i input_data.csv -o output_folder -t 5 --database ./tracm-data/maela_deep/gpsDB.zip --filter --minimap_preset lr:hq --either-strand --max_div 0.02
+```
+
+The `max_div` parameter is used here to prevent long very low homology alignments from being included.
+
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+library(tidyverse)
+library(ggthemes)
+```
+
+Load distances
+
+```{r}
+sim_props <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_props/*dist_props.csv"), ~{
+  name <- gsub("_dist_props.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% 
+    as_tibble() %>%
+    add_column(simulation=name, .before=1)
+}))
+
+sr_distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/*_tracm_distances.csv"), ~{
+  name <- gsub("_tracm_distances.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1)
+}))
+
+sr_min_distances <- sr_distances %>% 
+  group_by(simulation) %>%
+  summarise(
+    min_dist = min(`filtered SNP distance`)
+  )
+sr_min_distances$simdist <- as.numeric(gsub("d","", gsub("_.*","",sr_min_distances$simulation)))
+sr_min_distances$method <- "tracm"
+
+lr_distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/nano*_tracm*_distances.csv"), ~{
+  name <- gsub("_filt.*", "", gsub(".*/nano_sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1)
+}))
+
+lr_min_distances <- lr_distances %>% 
+  group_by(simulation) %>%
+  summarise(
+    min_dist = min(`filtered SNP distance`)
+  )
+lr_min_distances$simdist <- as.numeric(gsub("d","", gsub("_.*","",lr_min_distances$simulation)))
+lr_min_distances$method <- "tracm"
+
+pneumo_dists <- rbind(
+  lr_min_distances %>% add_column(platform='Nanopore'),
+  sr_min_distances %>% add_column(platform='Illumina')
+)
+```
+
+```{r}
+error_pdf <- pneumo_dists
+error_pdf$error <- error_pdf$min_dist - error_pdf$simdist
+error_pdf$rel_error <- (error_pdf$min_dist - error_pdf$simdist)/error_pdf$simdist
+
+dodge_width <- 0.7
+
+
+ggplot(error_pdf, aes(x=simdist, y=min_dist, color=platform)) +
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 1.1),
+                     breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000)) +
+  # scale_y_sqrt() +
+  scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks=c(0, 5, 50, 500)) +
+  geom_hline(yintercept = 0, colour='black', size=0.5) +
+  # geom_boxplot(outlier.colour = NA) +
+  # geom_jitter(height = 0, width = 0.1, size=2) +
+  geom_boxplot(aes(group=interaction(simdist, platform)), 
+               position=position_dodge(width=dodge_width), outlier.colour = NA) +
+  geom_point(position=position_jitterdodge(jitter.width = 0.05, dodge.width = dodge_width)) +
+  ggsci::scale_color_nejm() +
+  # facet_wrap(~sim_name) +
+  xlab("Simulated distance") +
+  ylab("Inferred SNP distance") +
+  theme_clean(base_size = 20) +
+  theme(plot.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust=1))
+
+# ggsave("./figures/nano_inferred_snp_vs_sim_dist.png",  width = 12, height = 7)
+# ggsave("./figures/nano_inferred_snp_error_vs_sim_dist.pdf",  width = 12, height = 7)
+
+```

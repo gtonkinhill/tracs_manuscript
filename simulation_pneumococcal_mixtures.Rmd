@@ -1,0 +1,221 @@
+---
+title: "Simulation of Deep Sequenced Mixtures of Streptococcus pneumoniae Strains"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+The following Bash commands accurately describe the execution process for each transmission inference method. However, they are not configured to run directly from this Rmarkdown document. Instead, these commands were executed separately on a server. The Python scripts for each tool can be found in the scripts directory of the TRACS package.
+
+## Generate simulations
+
+```
+for rep in {1..10}
+do
+  for d in 5 50 500
+  do
+    prefix=sim_d${d}_rep${rep}
+    python tracs-sim.py -t 5 --genomes ./ref_genomes/*.fasta --tran-genome ./ref_genomes/6259_6#1.fasta -d $d -b 10000 -n 2 -o $prefix --prefix $prefix
+  done
+done
+
+```
+
+## Run tools
+
+### TRACS
+
+TRACS was run using representative genomes from each major Global Pneumococcal Sequencing Cluster described in Gladstone et al., *EBioMedicine* (2019).
+
+```
+for f in sim_d5*[0-9]
+do
+  echo "prefix  read1 read2" > ${f}/input_data.csv
+  echo "sampleA ./${f}/${f}_A1.fastq.gz ./${f}/${f}_A2.fastq.gz" >> ${f}/input_data.csv
+  echo "sampleB ./${f}/${f}_B1.fastq.gz ./${f}/${f}_B2.fastq.gz" >> ${f}/input_data.csv
+  tracs pipe -i ${f}/input_data.csv -o ${f}_filt_newDB -t 15 --database gpsDB.zip --keep-all --filter
+done
+```
+
+### InStrain
+
+inStrain v1.8.0 was run using a single *S. pneumoniae* reference genome (SRR9998163) to align to.  
+
+```
+for f in sim_d5*[0-9]
+do
+  python run-instrain.py -t 5 --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB ${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz --references SRR9998163_WGS_of_strep_pneumoniae_Serotype_19F_assembly.fasta -o ${f}_instrain -p ${f}
+done
+```
+
+### StrainPhlAn
+
+MetaPhlAn & StrainPhlAn v4.0.5 were run using the default database (mpa_vJan21_CHOCOPhlAnSGB_202103). 
+
+```
+for f in sim_d5*[0-9]
+do
+  python run-strainphlan.py --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB .${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz -o ${f}_default_strainphlan -p ${f} -t 1 --refDB ./metaphlanDB
+done
+```
+
+### StrainGE
+
+A StrainGE database was built using the same GPS reference genomes as TRACS following the user manual by running
+
+```
+for f in *.fna
+do
+  straingst kmerize -o ${f%.fna}.hdf5 $f
+done
+
+straingst kmersim --all-vs-all -t 4 -S jaccard -S subset *.hdf5 > similarities.tsv
+straingst cluster -i similarities.tsv -d -C 0.99 -c 0.90 --clusters-out clusters.tsv *.hdf5 > references_to_keep.txt
+straingst createdb -o pan-genome-db.hdf5 *.hdf5
+```
+
+StrainGE v1.3.3 was then run on each simulation
+
+```
+for f in sim_d5*[0-9]
+do
+  python run_strainge.py --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB ${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz --referenceDB ./strainge_gpsDB/pan-genome-db.hdf5 --ref-dir ./strainge_gpsDB/ --ref-sim ./strainge_gpsDB/similarities.tsv -o ${f}/${f}
+done
+```
+
+## Compare results and generate plot
+
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+library(tidyverse)
+library(ggthemes)
+library(ggsci)
+```
+
+```{r}
+strainphlan <- map_dfr(Sys.glob("./data/pneumo_sim_mixtures/*strainphlan_distances.tsv"), ~{
+  name <- gsub(".*/sim_", "", gsub("_strainphlan_.*", "", .x))
+  df <- fread(.x) %>% 
+    as_tibble() %>%
+    add_column(sample=name, .before = 1)
+  df$sim_dist <- as.numeric(gsub(".*d", "", gsub("_rep.*", "", name)))
+  return(df)
+})
+
+splhan_lengths <- fread("./data/pneumo_SGB_lengths.csv") %>% as_tibble()
+splhan_lengths <- splhan_lengths[!duplicated(splhan_lengths$strain),]
+splhan_lengths$length/2e6
+
+strainphlan <- tibble(
+  simulation = gsub("sim_", "", strainphlan$sample),
+  # min_dist = strainphlan$snp_dist,
+  min_dist = strainphlan$snp_dist*2e6/splhan_lengths$length,
+  simdist = strainphlan$sim_dist,
+  method = "strainphlan"
+)
+
+### Strainge
+
+strainge <- map_dfr(Sys.glob("./data/pneumo_sim_mixtures/*_strainge_comparison.tsv"), ~{
+  
+  name <- gsub("_strainge_comparison.*", "", gsub(".*/sim_", "", .x))
+  
+  df <- fread(.x) %>% 
+    as_tibble() %>%
+    group_by(ref) %>%
+    summarise(
+      min_dist=sum(common-sharedAlleles)
+    ) %>%
+    add_column(simdist=as.numeric(gsub(".*d", "", gsub("_rep.*", "", name))), .before=2) %>%
+    add_column(simulation=name, .before = 2) %>%
+    add_column(method="Strainge")
+    
+  df <- df[which.min(df$min_dist),]
+  
+  return(df)
+})
+
+strainge$ref <- NULL
+
+sim_props <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_props/*dist_props.csv"), ~{
+  name <- gsub("_dist_props.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% 
+    as_tibble() %>%
+    add_column(simulation=name, .before=1)
+}))
+
+distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/*_tracm_distances.csv"), ~{
+  name <- gsub("_tracm_distances.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1)
+}))
+
+min_distances <- distances %>% 
+  group_by(simulation) %>%
+  summarise(
+    min_dist = min(`filtered SNP distance`)
+  )
+min_distances$simdist <- as.numeric(gsub("d","", gsub("_.*","",min_distances$simulation)))
+min_distances$method <- "tracs"
+
+
+instrain_distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/*instrain_distances.csv"), ~{
+  name <- gsub("_instrain.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1)
+})) %>% 
+  group_by(simulation) %>%
+  summarise(
+    min_dist = min(`population_SNPs`)
+  )
+instrain_distances$simdist <- as.numeric(gsub("d","", gsub("_.*","",instrain_distances$simulation)))
+instrain_distances$method <- "instrain"
+
+all_dists <- rbind(min_distances[min_distances$simulation %in% instrain_distances$simulation,], 
+                   strainphlan[strainphlan$simulation %in% instrain_distances$simulation,],
+                   strainge[strainge$simulation %in% instrain_distances$simulation,],
+                   instrain_distances)
+
+
+tb <- table((sim_props %>% filter(propA>0 & propB>0))$simulation)
+
+all_dists$multi_same_strain <- all_dists$simulation %in% names(tb)[tb>1]
+
+# Fix names
+all_dists$sim_name <- paste('Simulated\nSNPs:', all_dists$simdist)
+all_dists$Method <- all_dists$method
+all_dists$Method[all_dists$method=='instrain'] <- 'inStrain'
+all_dists$Method[all_dists$method=='tracs'] <- "TRACS"
+all_dists$Method[all_dists$method=='Strainge'] <- 'StrainGE'
+all_dists$Method[all_dists$method=='strainphlan'] <- 'StrainPhlAn'
+
+# Calculate errors
+error_pdf <- all_dists
+error_pdf$error <- error_pdf$min_dist - error_pdf$simdist
+error_pdf$rel_error <- (error_pdf$min_dist - error_pdf$simdist)/error_pdf$simdist
+
+# Generate plot
+dodge_width <- 0.7
+gg <- ggplot(error_pdf, aes(x=simdist, y=rel_error, color=Method, group=Method)) + 
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
+                     limits = c(-5, 5000)) +
+  scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks=c(0, 5, 50, 500)) +
+  geom_hline(yintercept = 0, colour='black', size=0.5) +
+  geom_boxplot(aes(group=interaction(simdist, method)), 
+               position=position_dodge(width=dodge_width), outlier.colour = NA) +
+  geom_point(position=position_jitterdodge(jitter.width = 0.05, dodge.width = dodge_width)) +
+  ggsci::scale_color_nejm() +
+  xlab("Simulated SNP distance") +
+  ylab("Relative error in SNP distance") +
+  theme_clean(base_size = 25) +
+  theme(plot.background = element_blank()) 
+
+gg
+
+# ggsave("./figures/pneumo_simulation_snpdist_2d_scaled_nomidas_simple.png", width = 10, height = 7)
+# ggsave("./figures/pneumo_simulation_snpdist_2d_scaled_nomidas_simple.pdf", width = 10, height = 7)
+```

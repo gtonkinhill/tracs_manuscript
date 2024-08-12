@@ -1,0 +1,218 @@
+---
+title: "Pneumococcal labratory mixtures"
+output: html_document
+date: '2023-03-30'
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This Rmarkdown document outlines the methodology used to analyse strain-sharing dynamics in laboratory mixtures of *Streptococcus pneumoniae* strains, based on the dataset from Knight et al. (2021).
+
+> Knight, J. R. et al. Determining the serotype composition of mixed samples of pneumococcus using whole-genome sequencing. Microb Genom 7, (2021).
+
+## Set up pairs
+
+The following Bash commands accurately describe the execution process for each transmission inference method. However, they are not configured to run directly from this Rmarkdown document. Instead, these commands were executed separately on a server. The Python scripts for each tool can be found in the scripts directory of the TRACS package.
+
+Initially, we randomly assign pairs of samples sharing at least one strain to pairs for subsequent analysis with each tool.
+
+```         
+import glob
+import random
+import os
+
+random.seed(1234)
+
+mixes = glob.glob("*strep_pneumoniae_Serotype_mixture*_1.fastq.gz")
+
+mix_types = {}
+for mix in mixes:
+    mix_types[mix] = set(mix.replace('_1.fastq.gz', '').split('_')[7:])
+
+
+with open("pairs.csv", 'w') as outfile:
+    count=0
+    pairs_match = []
+    while count<10:
+        m1, m2 = random.sample(mix_types.keys(), 2)
+        if len(mix_types[m1].intersection(mix_types[m2])) == 1:
+            prefix = m1.replace("_WGS_of_strep_pneumoniae_Serotype_mixture", "").replace(
+                "_1.fastq.gz", "") + "-" +m2.replace("_WGS_of_strep_pneumoniae_Serotype_mixture", "").replace(
+                    "_1.fastq.gz", "")
+            pairs_match.append((m1, m2, len(mix_types[m1].intersection(mix_types[m2]))))
+            count += 1
+            outfile.write("{},{},{},{}\n".format(prefix, m1, m2, len(mix_types[m1].intersection(mix_types[m2]))))
+    count=0
+    pairs_no_match = []
+    while count<10:
+        m1, m2 = random.sample(mix_types.keys(), 2)
+        if len(mix_types[m1].intersection(mix_types[m2])) == 0:
+            prefix = m1.replace("_WGS_of_strep_pneumoniae_Serotype_mixture", "").replace(
+                "_1.fastq.gz", "") + "-" + m2.replace("_WGS_of_strep_pneumoniae_Serotype_mixture", "").replace(
+                    "_1.fastq.gz", "")
+            pairs_no_match.append((m1, m2, len(mix_types[m1].intersection(mix_types[m2]))))
+            count += 1
+            outfile.write("{},{},{},{}\n".format(prefix, m1, m2, len(mix_types[m1].intersection(mix_types[m2]))))
+```
+
+### TRACS
+
+TRACS was run using representative genomes from each major Global Pneumococcal Sequencing Cluster described in Gladstone et al., *EBioMedicine* (2019).
+
+```         
+while IFS=, read -r prefix mix1 mix2
+do
+    # Create output directory
+    output_dir="${prefix}_tracm"
+    mkdir "$output_dir"
+
+    # Create input_data.tsv file
+    echo -e "prefix\tread1\tread2" > "${output_dir}/input_data.tsv"
+    echo -e "${prefix%%-*}\t$(realpath "$mix1")\t$(realpath "${mix1/_1.fastq.gz/_2.fastq.gz}")" >> "${output_dir}/input_data.tsv"
+    echo -e "${prefix##*-}\t$(realpath "$mix2")\t$(realpath "${mix2/_1.fastq.gz/_2.fastq.gz}")" >> "${output_dir}/input_data.tsv"
+
+    # Run tracs
+    tracs pipe -i ${output_dir}/input_data.tsv -o ${output_dir} -t 15 --database gpsDB.zip --keep-all
+
+done < "pairs.csv"
+```
+
+### InStrain
+
+InStrain v1.8.0 was run using a single *S. pneumoniae* reference genome (SRR9998163) to align to.
+
+```         
+while IFS=, read -r prefix mix1 mix2
+do
+    # Create output directory
+    output_dir="${prefix}_instrain"
+
+    # Run StrainGE
+    python run_instrain.py --inputA $mix1 "${mix1/_1.fastq.gz/_2.fastq.gz}" --inputB $mix2 "${mix2/_1.fastq.gz/_2.fastq.gz}" -o $output_dir -t 5 -p $output_dir --references SRR9998163_WGS_of_strep_pneumoniae_Serotype_19F_assembly.fasta
+    
+done < "pairs.csv"
+```
+
+### StrainPhlAn
+
+MetaPhlAn & StrainPhlAn v4.0.5 were run using the default database (mpa_vJan21_CHOCOPhlAnSGB_202103).
+
+```         
+while IFS=, read -r prefix mix1 mix2
+do
+    # Create output directory
+    output_dir="${prefix}_strainphlan"
+
+    # Run StrainGE
+    python run_strainphlan.py --inputA $mix1 "${mix1/_1.fastq.gz/_2.fastq.gz}" --inputB $mix2 "${mix2/_1.fastq.gz/_2.fastq.gz}" -o $output_dir -t 5 --refDB ./metaphlanDB
+    
+done < "pairs.csv"
+```
+
+### StrainGE
+
+A StrainGE database was built using the same GPS reference genomes as TRACS. StrainGE v1.3.3 was then run on each pair.
+
+```         
+while IFS=, read -r prefix mix1 mix2
+do
+    # Create output directory
+    output_dir="${prefix}_strainge"
+
+    # Run StrainGE
+    python run_strainge.py --inputA $mix1 "${mix1/_1.fastq.gz/_2.fastq.gz}" --inputB $mix2 "${mix2/_1.fastq.gz/_2.fastq.gz}" -o $output_dir -t 5 --referenceDB strainge_gpsDB/pan-genome-db.hdf5 --ref-dir strainge_gpsDB/ --ref-sim strainge_gpsDB/similarities.tsv
+    
+done < "pairs.csv"
+```
+
+## Compare results and generate plot
+
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+library(tidyverse)
+library(ggthemes)
+```
+
+```{r, message=FALSE, warning=FALSE}
+pairs <- gsub("_tracm_.*", "", gsub(".*_distances/", "", 
+                                    Sys.glob("./data/knight_known_mixtures_distances/*tracm_distances.csv")))
+pairs <- map_dfr(pairs, ~{
+  temp <- str_split(gsub("^[A-Z]*[0-9]*_", "", str_split_fixed(.x, "-", 2)), "_")
+  tibble(
+    pair=.x,
+    transmission=any(temp[[1]] %in% temp[[2]])
+  )
+})
+
+tracm_dists <- map_dfr(Sys.glob("./data/knight_known_mixtures_distances/*tracm_distances.csv"), ~{
+  name <- gsub("_tracm_.*", "", gsub(".*_distances/", "", .x))
+  read_csv(.x, col_types = "ccddddddd") %>%
+    add_column(pair=name, .before=1)
+})
+
+strainphlan_dists <- map_dfr(Sys.glob("./data/knight_known_mixtures_distances/*_strainphlan_distances.tsv"), ~{
+  name <- gsub("_strainphlan_.*", "", gsub(".*_distances/", "", .x))
+  read_csv(.x) %>%
+    add_column(pair=name, .before=1)
+})
+
+strainge_dists <- map_dfr(Sys.glob("./data/knight_known_mixtures_distances/*_strainge_comparison.tsv"), ~{
+  name <- gsub("_strainge_.*", "", gsub(".*_distances/", "", .x))
+  read_tsv(.x, col_types = paste(c("cccc", rep('d', 26)), collapse = '')) %>%
+    add_column(pair=name, .before=1) %>%
+    group_by(pair, sample1, sample2, ref) %>%
+    summarise(
+      snpdist=sum(common-sharedAlleles),
+      common=sum(common),
+      common_percentage = sum(common)/sum(length)
+    )
+})
+
+instrain_dists <- map_dfr(Sys.glob("./data/knight_known_mixtures_distances/*_instrain_distances.tsv"), ~{
+  name <- gsub("_instrain_.*", "", gsub(".*_distances/", "", .x))
+  read_tsv(.x) %>%
+    add_column(pair=name, .before=1)
+})
+
+pairs$instrain <- instrain_dists$population_SNPs[match(pairs$pair, instrain_dists$pair)]
+pairs$tracm <- tracm_dists$`filtered SNP distance`[match(pairs$pair, tracm_dists$pair)]
+pairs$strainphlan <- strainphlan_dists$snp_dist[match(pairs$pair, strainphlan_dists$pair)]
+pairs$strainge <- strainge_dists$snpdist[match(pairs$pair, strainge_dists$pair)]
+
+long_pairs <- pairs %>%
+  pivot_longer(
+    cols = starts_with("instrain"):strainge,
+    names_to = "method",
+    values_to = "SNP_distance"
+  ) %>%
+  mutate(Method = case_when(
+    method == 'instrain' ~ 'inStrain',
+    method == 'tracm' ~ "Trac'm",
+    method == 'strainge' ~ 'StrainGE',
+    method == 'strainphlan' ~ 'StrainPhlAn',
+    TRUE ~ method # This will keep the original value for rows that do not match any condition
+  ))
+
+ggplot(long_pairs %>% filter(transmission), aes(x=Method, y=SNP_distance)) +
+  geom_boxplot(aes(group=Method), outlier.color = NA) +
+  ggbeeswarm::geom_quasirandom(width = 0.2) +
+  # geom_hline(yintercept = 12, col="red") +
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks = c(0, 10, 100, 1000),
+                     limits = c(0, 2000)) +
+  theme_clean(base_size = 20) +
+  theme(
+    plot.background = element_blank(),
+    strip.background = element_blank(),
+        legend.background = element_blank()
+  ) +
+  ylab("Error in SNP distance") +
+  xlab("")
+
+# ggsave("./figures/pneumo_lab_error.png", width = 10, height = 5)
+# ggsave("./figures/pneumo_lab_error.pdf", width = 10, height = 5, device = cairo_pdf)
+```

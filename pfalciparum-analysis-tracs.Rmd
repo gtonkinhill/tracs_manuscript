@@ -1,0 +1,139 @@
+---
+title: "Plasmodium falciparum single cell strain sharing analysis"
+output: html_document
+date: '2023-05-10'
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This Rmarkdown describes the TRACS analysis of the bulk and single cell sequencing of *Plasmodium falciparum* isolates originally published in Nkhoma et al., 2020
+
+> Nkhoma, S. C. et al. Co-transmission of Related Malaria Parasite Lineages Shapes Within-Host Parasite Diversity. Cell Host Microbe 27, 93-103.e4 (2020).
+
+
+## Running TRACS
+
+The TRACS align command was run using the *P. falciparum* 3D7 reference genome
+
+The following Bash commands accurately describe the execution process for running TRACS. However, they are not configured to run directly from this Rmarkdown document. Instead, these commands were executed separately on a server.
+
+```
+tracs align -i example.fastq.gz -o out_dir -t 15 --refseqs PlasmoDB-63_Pfalciparum3D7_Genome.fasta --keep-all
+```
+
+```
+for folder in SRR*
+do
+echo $f >> folders.txt
+done
+tracs combine -i folders.txt -o combined_alignments -t 10
+```
+
+```
+tracs distance --msa PlasmoDB-63_Pfalciparum3D7_Genome_combined.fasta.gz --snp_threshold 10000 --filter -t 30 -o Pfalciparum3D7_filter_distance.csv
+```
+
+## Load results and generate plots
+
+```{r}
+library(tidyverse)
+library(data.table)
+library(ggthemes)
+library(patchwork)
+```
+
+Load metadata
+
+```{r}
+meta <- fread("./data/pfalciparum/SraRunTable_Nkhom_2019.txt") %>% 
+  as_tibble() %>%
+  filter(geo_loc_name_country=="Malawi")
+  
+meta$time_point <- as.numeric(str_extract(meta$`Sample Name`, "(?<=_T)\\d+"))
+
+meta$REPLICATE[meta$REPLICATE=="Bulk"] <- "bulk"
+```
+
+SNP thresholds are calculated using samples taken from the same isolate as 'close' and those taken from separate isolates as the 'distant' sets.
+
+```{r}
+source("./calculate_snp_cutoff.R")
+# seq length 29040213
+# mutation rate (Van dorp et al.) 5.57E−7 substitution/site/year [HPD 95% 2.75E−8–1.06E−6]
+
+distances <- fread("./data/pfalciparum/Pfalciparum3D7_all_distance.csv.gz") %>% as_tibble()
+distances$isolateA <- meta$Isolate[match(distances$sampleA, meta$Run)]
+distances$isolateB <- meta$Isolate[match(distances$sampleB, meta$Run)]
+
+meta$SAMPLE_TYPE[meta$SAMPLE_TYPE=="whole organism"] <- "bulk"
+meta$SAMPLE_TYPE[meta$SAMPLE_TYPE=="single cell"] <- "sc"
+distances$replicateA <- meta$SAMPLE_TYPE[match(distances$sampleA, meta$Run)]
+distances$replicateB <- meta$SAMPLE_TYPE[match(distances$sampleB, meta$Run)]
+
+distances$relationship <- map2_chr(distances$replicateA, distances$replicateB, ~ paste(sort(gsub("[0-9]*", "", c(.x,.y))), collapse = '-'))
+distances$same_isolate <- distances$isolateA==distances$isolateB
+
+distances$pid <- 1-distances$`SNP distance`/distances$`sites considered`
+
+distances_filt <- distances %>% 
+  filter(relationship %in% c('bulk-sc', 'sc-sc', 'bulk-bulk'))
+
+temp <- distances[distances$same_isolate & distances$relationship=='bulk-bulk',]
+
+distances_filt$same_isolate <- ifelse(distances_filt$same_isolate, "Same isolate", "Different isolate")
+
+pdf <- distances_filt %>% filter(relationship!="bulk-bulk")
+
+pdf$relationship[pdf$relationship=="bulk-sc"] <- "Bulk vs Single Cell"
+pdf$relationship[pdf$relationship=="sc-sc"] <- "Single Cell vs Single Cell"
+
+
+cuttoff <- pdf %>%
+  group_by(relationship) %>%
+  summarise(
+    threshold = mixture_snp_cutoff(trans_snp_dist = `filtered SNP distance`[same_isolate=="Same isolate"],
+                   unrelated_snp_dist = `filtered SNP distance`[same_isolate!="Same isolate"],
+                   upper.tail=1-1e-3)$snp_threshold * 3
+  )
+```
+
+Generate plots 
+
+```{r}
+gg1 <- ggplot(pdf %>% filter(relationship=="Bulk vs Single Cell"), 
+              aes(x=`filtered SNP distance`, y = ..density..*100, fill=same_isolate)) +
+  geom_histogram(binwidth = 250) +
+  geom_vline(xintercept = cuttoff$threshold[cuttoff$relationship=="Bulk vs Single Cell"], col='red') +
+  facet_wrap(~same_isolate, nrow = 1) +
+  ggsci::scale_fill_cosmic() +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank(),
+        legend.position = "none") +
+  ylab("Percentage of pairwise distances") +
+  xlab("SNP distance") +
+  ggtitle("Bulk vs Single Cell")
+
+
+gg2 <- ggplot(pdf %>% filter(relationship!="Bulk vs Single Cell"), 
+              aes(x=`filtered SNP distance`, y = ..density.. *100, fill=same_isolate)) +
+  geom_histogram(binwidth = 250) +
+  geom_vline(xintercept = cuttoff$threshold[cuttoff$relationship!="Bulk vs Single Cell"], col='red') +
+  facet_wrap(~same_isolate, nrow = 1) +
+  ggsci::scale_fill_cosmic() +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank(),
+        legend.position = "none") +
+  ylab("Percentage of pairwise distances") +
+  xlab("SNP distance") +
+  ggtitle("Single Cell vs Single Cell")
+
+
+gg1 + gg2 + patchwork::plot_layout(ncol=1)
+
+# ggsave("./figures/pfalciparum_histo.png", width = 12, height = 7)
+# ggsave("./figures/pfalciparum_histo.pdf", width = 12, height = 7)
+```
