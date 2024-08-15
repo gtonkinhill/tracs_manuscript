@@ -1,0 +1,88 @@
+---
+title: "Comparison of CPU and memory resource use of each algorithm"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+It is difficult to directly compare the resource requirements of each algorithm because each one involves different parameters and often requires selecting specific programs for tasks like read alignment or inferring SNP distances from multiple sequence alignments. To enhance comparability, we consistently opted for the same algorithms used in the TRACS pipeline whenever feasible.
+
+To assess speed and memory requirements, we ran each algorithm on a single simulation of metagenomic sequencing data involving a pair of samples, where one genome had been transmitted. Some algorithms, like StrainGE, do not scale as efficiently when analysing multiple species simultaneously, which means that this algorithm is likely to take longer with larger datasets involving the transmission of multiple species.
+
+Overall, these results offer a general indication of each algorithm's performance. However, the exact differences in speed and memory usage may vary depending on the characteristics of each specific dataset.
+
+## Run each method
+
+#### StrainPhlAn
+
+```
+/usr/bin/time -o ./time_tests/sphlan_time.txt -v python ./tracs/scripts/run-strainphlan.py --inputA .a/simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A1.fastq.gz ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A2.fastq.gz --inputB ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B1.fastq.gz ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B2.fastq.gz -o ./simulations/meta/time_tests/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_default_strainphlan -p sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic -t 1 --refDB ./simulations/metaphlan/metaphlanDB 
+```
+
+#### TRACS
+
+```
+/usr/bin/time -o ./time_tests/tracs_time.txt -v python ./tracs/pipe-runner.py -i sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/input_data.csv -o ./time_tests/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_filt -t 1 --database ./simulations/meta/gtdb-rs207.genomic-reps.dna.k51.sbt.zip --keep-all --filter 
+```
+
+#### StrainGE
+
+```
+/usr/bin/time -o ./time_tests/strainge_time.txt -v python ./tracs/scripts/run_strainge.py --inputA sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A1.fastq.gz sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A2.fastq.gz --inputB sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B1.fastq.gz sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B2.fastq.gz --referenceDB ./simulations/meta/strainge_db/pan-genome-db.hdf5 --ref-dir ./simulations/meta/strainge_db/ --ref-sim ./simulations/meta/strainge_db/similarities.tsv -o ./simulations/meta/time_tests/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_strainge
+```
+
+#### InStrain
+
+```
+/usr/bin/time -o ./time_tests/instrain_time.txt -v python ./tracs/scripts/run-instrain-meta.py -t 1 --inputA ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A1.fastq.gz ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_A2.fastq.gz --inputB ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B1.fastq.gz ./simulations/meta/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_B2.fastq.gz --references ./simulations/meta/instrainDB/UHGG_reps.fasta.bt2 -o ./time_tests/sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic_instrain_uhgg -p sim_d500_ref_GCF_000160055.1_ASM16005v1_genomic 
+```
+
+
+## Load and plot CPU time and memory requirements
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(patchwork)
+library(ggthemes)
+```
+
+```{r}
+res <- map_dfr(Sys.glob("./data/time/*.txt"), ~{
+  lines <- str_trim(read_lines(.x))
+  tibble(
+    method = gsub(".*/", "", gsub("_time.*", "", .x)),
+    memory = as.numeric(str_split(lines[grepl("Maximum resident set size", lines)], ": ")[[1]][[2]])/(1024**2),
+    cpu = sum(as.numeric(str_split_fixed(lines[grepl("^[US].*time*", lines)], ": ", 2)[,2]))/60/60
+  )
+}) %>%
+  mutate(method = recode(method,
+                         "instrain" = "InStrain",
+                         "sphlan" = "StrainPhlAn",
+                         "strainge" = "StrainGE",
+                         "tracs" ="TRACS"))
+
+gg1 <- ggplot(res, aes(x=method, y=cpu)) +
+  geom_col() +
+  theme_clean(base_size = 21) +
+  theme(plot.background = element_blank(),
+        legend.position = "none") +
+  ylab("CPU (hours)") +
+  xlab("") 
+
+gg2 <- ggplot(res, aes(x=method, y=memory)) +
+  geom_col() +
+  theme_clean(base_size = 21) +
+  theme(plot.background = element_blank(),
+        legend.position = "none") +
+  ylab("Memory (Gb)") +
+  xlab("") 
+
+gg1 + gg2 + patchwork::plot_layout(nrow = 1)
+
+# ggsave("./figures/resources.png", width = 12, height = 7)
+# ggsave("./figures/resources.pdf", width = 12, height = 7)
+```
