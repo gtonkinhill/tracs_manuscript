@@ -1,0 +1,4 @@
+sampleA,sampleB,date difference,SNP distance,transmission distance,expected K,filtered SNP distance,sites considered,MSA file
+sampleB_GCF_002234575.2,sampleA_GCF_002234575.2,NA,3700,NA,NA,3435,4537752,combinedGCF_002234575
+sampleB_GCF_015751045.1,sampleA_GCF_015751045.1,NA,16,NA,NA,14,2319380,combinedGCF_015751045
+sampleB_GCF_001544255.1,sampleA_GCF_001544255.1,NA,13,NA,NA,11,1922805,combinedGCF_001544255

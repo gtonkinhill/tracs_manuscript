@@ -1,0 +1,13 @@
+# simulation command: /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./gtdb_rep_references/GCF_000020225.1_ASM2022v1_genomic.fna ./gtdb_rep_references/GCF_000154285.1_ASM15428v1_genomic.fna ./gtdb_rep_references/GCF_000160055.1_ASM16005v1_genomic.fna ./gtdb_rep_references/GCF_000742135.1_ASM74213v1_genomic.fna ./gtdb_rep_references/GCF_002234575.2_ASM223457v2_genomic.fna ./gtdb_rep_references/GCF_003641185.1_ASM364118v1_genomic.fna ./gtdb_rep_references/GCF_016902345.1_ASM1690234v1_genomic.fna ./gtdb_rep_references/GCF_025147485.1_ASM2514748v1_genomic.fna ./gtdb_rep_references/GCF_025151215.1_ASM2515121v1_genomic.fna ./gtdb_rep_references/GCF_028539415.1_ASM2853941v1_genomic.fna ./gtdb_rep_references/GCF_029023785.1_ASM2902378v1_genomic.fna --tran-genome ./gtdb_rep_references/GCF_025147485.1_ASM2514748v1_genomic.fna -d 50 -b 10000 -n 5 -o sim_d50_ref_GCF_025147485.1_ASM2514748v1_genomic --prefix sim_d50_ref_GCF_025147485.1_ASM2514748v1_genomic
+genome,propA,propB,distance
+GCF_000020225.1_ASM2022v1_genomic,0.0,0.44700808034610734,10105
+GCF_000154285.1_ASM15428v1_genomic,0.0,0.0,10098
+GCF_000160055.1_ASM16005v1_genomic,0.0,0.2817454400011807,9993
+GCF_000742135.1_ASM74213v1_genomic,0.19940464452098483,0.011490456881301521,10049
+GCF_002234575.2_ASM223457v2_genomic,0.0,0.0,10026
+GCF_003641185.1_ASM364118v1_genomic,0.0,0.0,10050
+GCF_016902345.1_ASM1690234v1_genomic,0.09451335102789028,0.0,9956
+GCF_025147485.1_ASM2514748v1_genomic,0.5616321856881323,0.1249165648418853,50
+GCF_025151215.1_ASM2515121v1_genomic,0.0978485654558358,0.0,10078
+GCF_028539415.1_ASM2853941v1_genomic,0.0,0.13483945792952504,10158
+GCF_029023785.1_ASM2902378v1_genomic,0.046601253307156705,0.0,9993

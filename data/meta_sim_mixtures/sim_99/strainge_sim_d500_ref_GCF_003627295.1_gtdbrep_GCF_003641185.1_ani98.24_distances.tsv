@@ -1,0 +1,3 @@
+sample1	sample2	ref	scaffold	length	common	commonPct	single	singlePct	singleAgree	singleAgreePct	multi	multiPct	sharedAlleles	sharedAllelesPct	variants	variantPct	commonVariant	commonVariantPct	variantExact	variantExactPct	AnotB	AnotBpct	BnotA	BnotApct	Agaps	AgapPct	Bgaps	BgapPct	gapJaccardSim
+sampleA	sampleB	GCF_029023785.1_ASM2902378v1_genomic	NZ_CP118955.1	2529607	2276477	89.9933	2276069	99.9821	2272196	99.8298	408	0.0179	2272604	99.8299	14526	0.6381	10653	73.3375	10439	71.8642	85	0.5852	3919	26.9792	155559	100.0000	155712	100.0000	0.9999
+sampleA	sampleB	GCF_029023785.1_ASM2902378v1_genomic	NZ_CP118956.1	142622	886	0.6212	885	99.8871	884	99.8870	1	0.1129	885	99.8871	105	11.8510	104	99.0476	103	98.0952	1	0.9524	1	0.9524	0	0.0000	0	0.0000	1.0000
