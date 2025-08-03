@@ -591,6 +591,28 @@ mixture_thresholds <- method_thresholds %>% filter(`SNP threshold\nalgorithm`=="
 pdf$threshold <- mixture_thresholds$threshold[match(pdf$method, mixture_thresholds$method)]
 ```
 
+Plot SNP estimate distributions
+
+```{r}
+ggplot(pdf |> filter(distance < 3000) |> filter(method!='strainGE'), aes(x=distance, fill=relationship)) +
+  geom_histogram(binwidth = 20, position = 'identity', alpha=0.5) +
+  facet_wrap(~method, nrow = 1, strip.position = "bottom") +
+  # scale_y_sqrt() +
+  scale_fill_manual(values = c("red", "black")) +
+  theme_clean(base_size = 16) +
+  theme(plot.background = element_blank())  +
+  theme(strip.background = element_blank(),
+        strip.placement = "outside",
+        legend.background = element_blank()) +
+  ylab("Number of shared strains") +
+  xlab("SNP distance")
+
+
+
+ggsave("./figures/FMT_snp_distance_method_comparison.png", width = 10, height = 7)
+ggsave("./figures/FMT_snp_distance_method_comparison.pdf", width = 10, height = 7, device = cairo_pdf)
+```
+
 Calculate false positives (transmissions between very unlikely pairs).
 
 ```{r}
@@ -686,6 +708,9 @@ bifi_method_thresholds <- pdf %>%
     )
   }, .keep = TRUE) %>% bind_rows()
 
+
+# Print counts per method
+table(pdf$method[pdf$distance<pdf$threshold], pdf$bifi[pdf$distance<pdf$threshold])
 
 ggplot(pdf %>% 
          filter(relationship=="Same recipient after FMT") %>%

@@ -14,18 +14,105 @@ To simulate mixtures of common gut bacteria we consider species taken from: Mu, 
 
 The exact reference genomes used are available in the zip file attached to the release of this GitHub repository.
 
--   *Akkermansia muciniphila*
--   *Bacteroides cellulosilyticus*
--   *Bacteroides uniformis*
--   *Bacteroides uniformis*
--   *Clostridium bolteae*
--   *Clostridium glycyrrhizinilyticum*
--   *Dialister invisus*
--   *Enterococcus faecium*
--   *Eubacterium dolichum*
--   *Klebsiella pneumoniae*
--   *Lactobacillus pentosus*
--   *Parabacteroides merdae*
+- *Akkermansia muciniphila* (GCF_000020225.1)
+- *Bacteroides cellulosilyticus* (GCF_028539415.1)
+- *Bacteroides uniformis* (GCF_025147485.1)
+- *Enterocloster bolteae/Clostridium bolteae* (GCF_002234575.2)
+<!-- - *Mediterraneibacter glycyrrhizinilyticus/Clostridium glycyrrhizinilyticum* (GCF_016902345.1) -->
+- *Dialister invisus* (GCF_000160055.1)
+- *Enterococcus faecium* (GCF_029023785.1)
+- *Amedibacillus dolichus/Eubacterium dolichum* (GCF_000154285.1)
+- *Klebsiella pneumoniae* (GCF_000742135.1)
+- *Lactiplantibacillus pentosus* (GCF_003641185.1)
+- *Parabacteroides merdae* (GCF_025151215.1)
+
+
+We now run Skani to search each reference genome against the GTDB database to identify new references that are roughly 99% and 97% ANI to the original reference genomes. This is done to simulate a more realistic scenario where the reference genomes are more divergent from the database.
+
+```
+rm skani_cmds.txt
+for f in gtdb_rep_references/*.fna
+do
+prefix=$(basename $f .fna)
+echo "skani search --min-af 80 -s 95 -t 20 $f -d /data1/gerryt/sylph_analyses/GTDB_complete2/gtdb_skani_database_ani -o ./gtdb_search_results/${prefix}_gtdb_search_results.tsv" >> skani_cmds.txt
+done
+
+parallel --joblog parallel_skani_joblog.txt --progress -j 15 < skani_cmds.txt
+```
+
+```{python, eval=FALSE, python.reticulate = FALSE}
+import pandas as pd
+import shutil
+import glob
+
+metafile = "bac120_metadata_r220.tsv.gz"
+
+df = pd.read_csv(metafile, sep='\t', low_memory=False)
+
+# Fix accession
+df["accession"] = df["accession"].str.extract('(GC[AF]_\d{9}\.\d)')
+
+# Set overall score according to GTDB formula. 
+# The current GTDB representative is given the greatest score (1e7).
+
+# GTDB CRITERIA: SCORE
+# Assembled from type strain of species:	            1 000 000
+# Effective type strain of species according to NCBI:	100 000
+# NCBI representative of species:                   	10 000
+# Assembled from type strain of subspecies:            	1000
+# Complete genome:                                      100
+# CheckM quality estimate:                          	Completeness – 5 × contamination
+# MAG or SAG:                                       	–100
+# Contig count:                                     	–5 × (no. contigs/100)
+# Undetermined bases:                               	–5 × (no. undetermined bases/10 000)
+# Full length 16S rRNA gene:                        	10
+
+df['rep_score'] = (   
+    1e7 * (df['gtdb_representative']=='t').astype(float) +
+    1e6 * df['gtdb_type_designation_ncbi_taxa_sources'].str.contains("LPSN", na=False).astype(float) +
+    1e5 * df['gtdb_type_designation_ncbi_taxa'].str.contains("type strain of species", na=False).astype(float) +
+    1e4 * df['ncbi_refseq_category'].str.contains("representative genome", na=False).astype(float) +
+    1e3 * df['gtdb_type_designation_ncbi_taxa'].str.contains("type strain of subspecies", na=False).astype(float) +
+    1e2 * df['ncbi_assembly_level'].str.contains("Complete Genome", na=False).astype(float) +
+    df['checkm_completeness'] - 5*df['checkm_contamination'] -
+    100 * (df['mimag_high_quality']=='f').astype(float) -
+    5 * (df['contig_count']/1e2) -
+    5 * (df['ambiguous_bases']/1e4) +
+    10 * (df['ssu_count']>0).astype(float)
+)
+
+df = df.sort_values(by='rep_score', ascending=False)
+
+df['gtdb_species'] = df["gtdb_taxonomy"].str.extract('s__(.*)')
+
+
+# Now look through Skani results and take the first under each ANI threshold that has a minimum GTDB score of 100
+min_rep_score = 100
+database_location = "/data1/gerryt/sylph_analyses/GTDB_complete2/2024-10-15_00-34-44/files/"
+
+for skani_results in glob.glob("*_gtdb_search_results.tsv"):
+    gtdb_rep = skani_results.split("_")[0]
+    skani_df = pd.read_csv(skani_results, sep='\t', low_memory=False)
+    skani_df["accession"] = skani_df["Ref_file"].str.extract('(GC[AF]_\d{9}\.\d)')
+    skani_df = skani_df.merge(df[['accession', 'rep_score']], on='accession', how='left')
+    skani_filtered = skani_df[skani_df['rep_score'] >= min_rep_score]
+    skani_filtered = skani_filtered.sort_values(by='ANI', ascending=False)
+    for A in [99, 97]:
+        print(A)
+        # Find the first row where ANI <= A
+        accession_first_below_threshold = skani_filtered[skani_filtered['ANI'] <= A].head(1)
+        # If no such row exists, fall back to row with minimum ANI
+        if accession_first_below_threshold.empty:
+            min_ani = skani_filtered['ANI'].min()
+            accession_first_below_threshold = skani_filtered[skani_filtered['ANI'] == min_ani].head(1)
+        accession_str = accession_first_below_threshold['accession'].tolist()[0]
+        ani_str = str(accession_first_below_threshold['ANI'].tolist()[0])
+        ref_file = glob.glob(database_location + accession_str + "*")[0]
+        destination_file = "refs_" + str(A) + "/" + accession_str + "_gtdbrep_" + gtdb_rep + "_ani" + ani_str + "fna.gz"
+        print(ref_file, destination_file, ani_str)
+        shutil.copy2(ref_file, destination_file)
+```
+
 
 ## Simulations
 
@@ -34,42 +121,94 @@ The following Bash commands accurately describe the execution process for each t
 Here we simulate the transmission of each species separately at 5, 50 and 500 SNPs. The remaining species within each mixture are simulated to be separated by 10,000 SNPs on average.
 
 ```         
-for ref in ./mu_genomes/*.fna
+for ref in ./gtdb_rep_references/*.fna
 do
 for d in 5 50 500
 do
 prefix=$(basename $ref .fna)
 prefix=sim_d${d}_ref_${prefix}
-python /data1/gerryt/tracm/scripts/tracm-sim.py -t 5 --genomes ./mu_genomes/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o $prefix --prefix $prefix
+echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./gtdb_rep_references/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o $prefix --prefix $prefix >> sim_gtdb_refs_cmds.txt
 done
 done
+
+parallel --joblog parallel_sim_gtdb_refs_joblog.txt --progress -j 50 < sim_gtdb_refs_cmds.txt
+
+
+rm sim_gtdb_refs_div_cmds.txt
+for ref in ./refs_99/*.fna
+do
+for d in 5 50 500
+do
+prefix=$(basename $ref .fna)
+prefix=sim_d${d}_ref_${prefix}
+echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_99/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_99/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
+done
+done
+
+for ref in ./refs_97/*.fna
+do
+for d in 5 50 500
+do
+prefix=$(basename $ref .fna)
+prefix=sim_d${d}_ref_${prefix}
+echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_97/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_97/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
+done
+done
+
+parallel --joblog parallel_sim_div_gtdb_refs_joblog.txt --progress -j 60 < sim_gtdb_refs_div_cmds.txt
 ```
 
 ## Run tools
 
 ### TRACS
 
-TRACS was run using representative genomes from each major Global Pneumococcal Sequencing Cluster described in Gladstone et al., *EBioMedicine* (2019).
+TRACS was run using both the full GTDB r207 database and a reduced database that only includes the genomes used in the simulation.
 
 ```
-for f in sim_d5*[0-9]
+rm /data1/gerryt/tracm-data/simulations/meta_revision/all_tracs_cmds.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
 do
   echo "prefix  read1 read2" > ${f}/input_data.csv
-  echo "sampleA ./${f}/${f}_A1.fastq.gz ./${f}/${f}_A2.fastq.gz" >> ${f}/input_data.csv
-  echo "sampleB ./${f}/${f}_B1.fastq.gz ./${f}/${f}_B2.fastq.gz" >> ${f}/input_data.csv
-  tracs pipe -i ${f}/input_data.csv -o ${f}_filt -t 15 --database gtdb-rs207.genomic-reps.dna.k51.sbt.zip --keep-all --filter
+  echo "sampleA ${folder_path}/${f}/${f}_A1.fastq.gz ${folder_path}/${f}/${f}_A2.fastq.gz" >> ${folder_path}/${f}/input_data.csv
+  echo "sampleB ${folder_path}/${f}/${f}_B1.fastq.gz ${folder_path}/${f}/${f}_B2.fastq.gz" >> ${folder_path}/${f}/input_data.csv
+  echo tracs pipe -i ${folder_path}/${f}/input_data.csv -o ${folder_path}/tracs_filt_1cpu_${f} -t 1 --database /data1/gerryt/tracm-data/simulations/meta_revision/gtdb-rs207.genomic-reps.dna.k51.sbt.zip --keep-all --filter >> /data1/gerryt/tracm-data/simulations/meta_revision/all_tracs_cmds.txt
 done
+cd ..
+done
+
+parallel --joblog parallel_tracs_1cpu_cmds_joblog.txt --progress -j 90 < all_tracs_cmds.txt
+
 ```
 
-### InStrain
-
-inStrain v1.8.0 was run using the default metagenomics UHGG v1 genome collection database.
+Build a smaller database which only includes the genomes used in the simulation. These genomes are also used in the comparison against alternative tools.
 
 ```
-for f in sim_d5*[0-9]
+tracs build-db -i ./gtdb_rep_references/*.fna -o tracs_db_same_genome_as_sim -t 10
+```
+
+
+```
+rm /data1/gerryt/tracm-data/simulations/meta_revision/all_tracs_reduced_db_cmds_1cpu.txt
+for folder in sim_100 sim_99 sim_97
 do
-  python run-instrain-meta.py -t 20 --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB ${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz --references UHGG_reps.fasta.bt2 -o ${f}/${f}_instrain_uhgg -p ${f}/${f}
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  echo "prefix  read1 read2" > ${f}/input_data.csv
+  echo "sampleA ${folder_path}/${f}/${f}_A1.fastq.gz ${folder_path}/${f}/${f}_A2.fastq.gz" >> ${folder_path}/${f}/input_data.csv
+  echo "sampleB ${folder_path}/${f}/${f}_B1.fastq.gz ${folder_path}/${f}/${f}_B2.fastq.gz" >> ${folder_path}/${f}/input_data.csv
+  echo tracs pipe -i ${folder_path}/${f}/input_data.csv -o ${folder_path}/tracs_filt_reduced_db_1cpu_${f} -t 1 --database /data1/gerryt/tracm-data/simulations/meta_revision/tracs_db_same_genome_as_sim.zip --keep-all --filter >> /data1/gerryt/tracm-data/simulations/meta_revision/all_tracs_reduced_db_cmds_1cpu.txt
 done
+cd ..
+done
+
+parallel --joblog parallel_tracs_reduced_db_cmds_1cpu_joblog.txt --progress -j 90 < all_tracs_reduced_db_cmds_1cpu.txt
+
 ```
 
 ### StrainPhlAn
@@ -77,51 +216,227 @@ done
 MetaPhlAn & StrainPhlAn v4.0.5 were run using the default database (mpa_vJan21_CHOCOPhlAnSGB_202103). 
 
 ```
-for f in sim_d5*[0-9]
+rm all_strainphlan_cmds.txt
+for folder in sim_100 sim_99 sim_97
 do
-  python run-strainphlan.py --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB ${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz -o ${f}_strainphlan -p ${f} -t 1 --refDB ./metaphlanDB
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  echo python /data1/gerryt/tracs/scripts/run-strainphlan.py --inputA ${folder_path}/${f}/${f}_A1.fastq.gz ${folder_path}/${f}/${f}_A2.fastq.gz --inputB ${folder_path}/${f}/${f}_B1.fastq.gz ${folder_path}/${f}/${f}_B2.fastq.gz -o ${folder_path}/strainphlan_${f} -p ${f} -t 1 --refDB /data1/gerryt/tracm-data/simulations/metaphlan/metaphlanDB >> /data1/gerryt/tracm-data/simulations/meta_revision/all_strainphlan_cmds.txt
 done
+cd ..
+done
+
+parallel --joblog parallel_strainphlan_cmds_joblog.txt --progress -j 90 < all_strainphlan_cmds.txt
+
 ```
+
 
 ### StrainGE
 
-A StrainGE database was built using the representative RefSeq genome for each species included in the mixture. After downloading the references a strainGE database was built following the user guide.
+StrainGE v1.3.3 was then run on each simulation
 
-The included references were
-
-- GCF_000020225.1
-- GCF_000154105.1
-- GCF_000154205.1
-- GCF_000158035.1
-- GCF_000160055.1
-- GCF_000742135.1
-- GCF_001544255.1
-- GCF_002234575.2
-- GCF_003641185.1
-- GCF_015560805.1
 
 ```
 mkdir strainge_db
 
-for f in ./refseq_genomes/*.fna
+for f in ./gtdb_rep_references/*.fna
 do
 prefix=$(basename $f .fna)
 straingst kmerize -o ./strainge_db/${prefix}.hdf5 $f
 done
 
+cd strainge_db
 straingst kmersim --all-vs-all -t 4 -S jaccard -S subset *.hdf5 > similarities.tsv
 straingst cluster -i similarities.tsv -d -C 0.99 -c 0.90 --clusters-out clusters.tsv *.hdf5 > references_to_keep.txt
 straingst createdb -o pan-genome-db.hdf5 *.hdf5
+cd ..
 ```
 
-StrainGE v1.3.3 was then run on each simulation
-
 ```
-for f in sim_d5*[0-9]
+rm all_strainge_revision_cmds.txt
+for folder in sim_100 sim_99 sim_97
 do
-  python /data1/gerryt/tracm/scripts/run_strainge.py --inputA ${f}/${f}_A1.fastq.gz ${f}/${f}_A2.fastq.gz --inputB ${f}/${f}_B1.fastq.gz ${f}/${f}_B2.fastq.gz --referenceDB ./strainge_db/pan-genome-db.hdf5 --ref-dir ./strainge_db/ --ref-sim ./strainge_db/similarities.tsv -o ${f}_strainge
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo python /data1/gerryt/tracs/scripts/run_strainge.py --inputA ${folder_path}/${f}/${f}_A1.fastq.gz ${folder_path}/${f}/${f}_A2.fastq.gz --inputB ${folder_path}/${f}/${f}_B1.fastq.gz ${folder_path}/${f}/${f}_B2.fastq.gz --referenceDB /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/pan-genome-db.hdf5 --ref-dir /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/ --ref-sim /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/similarities.tsv -o ${folder_path}/strainge_${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_strainge_revision_cmds.txt
 done
+cd ..
+done
+
+parallel --joblog parallel_strainge_cmds_joblog.txt --progress -j 90 < all_strainge_revision_cmds.txt
 ```
+
+
+### InStrain
+
+inStrain v1.8.0 was run the same database.
+
+```
+rm all_instrain_cmds.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo python /data1/gerryt/tracs/scripts/run-instrain.py -t 1 --inputA ${folder_path}/${f}/${f}_A*.fastq.gz --inputB ${folder_path}/${f}/${f}_B*.fastq.gz --references /data1/gerryt/tracm-data/simulations/meta_revision/gtdb_rep_references/*.fna -o ${folder_path}/instrain_${f} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_cmds.txt
+done
+cd ..
+done
+
+parallel --joblog parallel_instrain_cmds_joblog.txt --progress -j 90 < all_instrain_cmds.txt
+
+```
+
+## InStrain Assembly
+
+First assemble everything with MetaSpades. This approach is not feasible for online transmission inference as all samples have to be available at the start of the analysis. However, it is useful for benchmarking the performance of the tools.
+
+```
+rm all_meta_spades_cmds.txt
+# Loop over simulation folders
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo "Processing: $f"
+  A1="${folder_path}/${f}/${f}_A1.fastq.gz"
+  A2="${folder_path}/${f}/${f}_A2.fastq.gz"
+  B1="${folder_path}/${f}/${f}_B1.fastq.gz"
+  B2="${folder_path}/${f}/${f}_B2.fastq.gz"
+  cat ${A1} ${B1} > "${folder_path}/${f}/${f}_combined_1.fastq.gz"
+  cat ${A2} ${B2} > "${folder_path}/${f}/${f}_combined_2.fastq.gz"
+  OUT="${folder_path}/${f}/metaspades_combined_${f}"
+  echo "metaspades.py -t 2 -1 ${folder_path}/${f}/${f}_combined_1.fastq.gz -2 ${folder_path}/${f}/${f}_combined_2.fastq.gz -o ${OUT}" >> /data1/gerryt/tracm-data/simulations/meta_revision/all_meta_spades_cmds.txt
+done
+cd ..
+done
+
+# Input FASTQ files for A and B
+parallel --joblog parallel_metspades_combined_cmds_joblog.txt --progress -j 90   '/usr/bin/time -v bash -c {} 2> time_logs/job_{#}.log' :::: all_meta_spades_cmds.txt
+
+```
+
+Generate InStrain stb
+
+```
+rm /data1/gerryt/tracm-data/simulations/meta_revision/generate_stbs.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo "Processing: $f"
+  meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+  mkdir -p "${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/"
+  echo "/data1/gerryt/tracs/scripts/generate_instrain_stb.sh ${meta_out} /data1/gerryt/tracm-data/simulations/meta_revision/gtdb_rep_references/ ${folder_path}/${f}/metaspades_combined_${f}/instrain_map.stb ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/" >> /data1/gerryt/tracm-data/simulations/meta_revision/generate_stbs.txt
+done
+cd ..
+done
+
+parallel --joblog parallel_generate_stbs_cmds_joblog.txt --progress -j 90 < generate_stbs.txt
+
+```
+
+Now run InStrain with custom references
+
+```
+rm all_instrain_customDB_cmds.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+  echo python /data1/gerryt/tracs/scripts/run-instrain.py -t 1 --inputA ${folder_path}/${f}/${f}_A*.fastq.gz --inputB ${folder_path}/${f}/${f}_B*.fastq.gz --references ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/*.fasta -o ${folder_path}/instrain_customDB_${f} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds.txt
+done
+cd ..
+done
+
+
+for folder in sim_100 sim_99 sim_97
+do
+  cd $folder
+  folder_path=$(pwd)
+
+  for f in sim_d5*
+  do
+    f=$(basename $f)
+    output_dir="${folder_path}/instrain_customDB_${f}"
+    summary_file="${output_dir}/compare_instrain_summary.tsv"
+
+    if [ ! -f "$summary_file" ]; then
+      meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+      echo python /data1/gerryt/tracs/scripts/run-instrain.py -t 10 \
+        --inputA ${folder_path}/${f}/${f}_A*.fastq.gz \
+        --inputB ${folder_path}/${f}/${f}_B*.fastq.gz \
+        --references ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/*.fasta \
+        -o ${output_dir} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds3.txt
+    fi
+  done
+
+  cd ..
+done
+
+parallel --joblog parallel_instrain_customDB_cmds_joblog3.txt --progress -j 3 < all_instrain_customDB_cmds3.txt
+
+```
+
+
+We can now combine the results files into a folder for analysis
+
+```
+for folder in sim_100 sim_99 sim_97
+do
+outdir="/data1/gerryt/tracm-data/simulations/meta_revision/meta_sim_mixtures/${folder}"
+mkdir -p $outdir
+cd $folder
+folder_path=$(pwd)
+for f in sim*
+do
+cp ${folder_path}/${f}/*_dist_props.csv ${outdir}/
+done
+for f in tracs*
+do
+  cp ${folder_path}/${f}/transmission_distances.csv ${outdir}/${f}_distances.csv
+done
+for f in strainge_*
+do
+    cp ${folder_path}/${f}/comparison.tsv ${outdir}/${f}_distances.tsv
+done
+for f in instrain_*
+do
+    cp ${folder_path}/${f}/compare_instrain_summary.tsv ${outdir}/${f}_distances.tsv
+done
+for f in instrain_customDB*
+do
+    cp ${folder_path}/${f}/compare_instrain_summary.tsv ${outdir}/${f}_distances.tsv
+done
+for f in  strainphlan*
+do
+  cp ${folder_path}/${f}/strainphlan_distances.tsv ${outdir}/${f}_distances.tsv
+done
+cd ..
+done
+
+tar -czf meta_sim_mixtures.tar.gz ./meta_sim_mixtures
+
+```
+
+
 
 ## Compare results and generate plot
 
@@ -130,58 +445,84 @@ done
 library(data.table)
 library(tidyverse)
 library(ggthemes)
+library(dplyr)
 ```
 
 ```{r, message=FALSE}
-# Load StrainPhlAn results
-
-sphlan_map <- fread("./data/strainphlan_db_map.csv") %>% as_tibble() 
-sphlan_aln_dist <- fread("./data/meta_SGB_lengths.csv") %>% as_tibble() 
-
-strainphlan <- map_dfr(Sys.glob("./data/meta_sim_mixtures/*strainphlan_distances.tsv"), ~{
-  df <- fread(.x) %>% 
+# Load simulation distances
+sim_dists <- map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/sim*_dist_props.csv"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  return(fread(.x) %>% 
     as_tibble() %>%
-    add_column(sample=gsub("_genomic.*", "", gsub(".*/sim_", "", .x)), .before = 1)
-    df$sim_dist <- as.numeric(gsub("d", "", gsub("_ref.*", "", df$sample)))
-    return(df)
+    add_column(simulation=simulation, .before = 1) %>%
+    filter(distance <= 500))
 })
+sim_dists$genome <- gsub("_genomic", "", sim_dists$genome)
+# Check we dont have any duplicated entries
+stopifnot(all(!duplicated(sim_dists[,c(1,2,5)])))
+```
 
-strainphlan$strain <- gsub("[A-Z]_t", "t", strainphlan$sample1)
+```{r}
+# Load StrainPhlAn results
+sphlan_map <- read_csv("./data/strainphlan_db_map.csv")
+sphlan_aln_dist <- read_csv("./data/meta_SGB_lengths.csv")
+
+strainphlan <- map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/strainphlan*_distances.tsv"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  name <- gsub(".*_ref_", "", gsub("_g.*", "", .x))
+  gtdb_accession <- str_extract(.x, "(?<=_gtdbrep_)(GCF_[^_]+)")
+  if (is.na(gtdb_accession)) {
+    gtdb_accession <- str_extract(.x, "(?<=_ref_)(GCF_[^_]+)")
+  }
+  
+  df <- fread(.x, colClasses = c('character', 'character', 'character', 'integer')) %>% 
+    as_tibble() %>%
+    add_column(sample=name, .before = 1) %>%
+    add_column(gtdb_accession=gtdb_accession) %>%
+    add_column(sim_dist=str_extract(.x, "(?<=_d)\\d+")) %>%
+    add_column(simulation=simulation, .before=1)
+  
+  return(df)
+}) %>%
+add_column(method="StrainPhlAn")
+
+strainphlan$gtdb_species <- sphlan_map$species[match(strainphlan$gtdb_accession, sphlan_map$ID)]
+
+strainphlan <- strainphlan %>%
+  filter(species==gtdb_species)
+
+strainphlan$strain <- gsub("[AB]_", "", strainphlan$sample1)
 strainphlan$genome_length <- sphlan_map$length[match(strainphlan$species, sphlan_map$species)]
 strainphlan$scaled_snp_dist <- strainphlan$genome_length/sphlan_aln_dist$length[match(strainphlan$strain, sphlan_aln_dist$strain)] * strainphlan$snp_dist
 
-# Load simulated proportions
-
-sim_props <- map_dfr(Sys.glob("./data/strainphlan_outputs/*_dist_props.csv"), ~{
-  df <- fread(.x) %>% 
-    as_tibble() %>%
-    add_column(sample=gsub("_genomic.*", "", gsub(".*sim_", "", .x)), .before = 1) %>% 
-    filter(distance < 600)
-  df$genome <- gsub("_genomic", "", df$genome)
-  df$species <- sphlan_map$species[match(df$genome, sphlan_map$ID)]
-  return(df)
-})
-
-strainphlan <- strainphlan[paste(strainphlan$sample, strainphlan$species) %in% paste(sim_props$sample, sim_props$species),]
-
-
 # Load StrainGE results
 
-strainge <- map_dfr(Sys.glob("./data/meta_sim_mixtures/*_strainge_distances.tsv"), ~{
+
+col_types <- spec(read_tsv(Sys.glob("./data/meta_sim_mixtures/sim*/strainge*")[[1]]))$cols
+
+strainge <- map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/strainge*"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  name <- gsub(".*_ref_", "", gsub("_g.*", "", .x))
   
-  name <- gsub("_strainge.*", "", gsub(".*/sim_", "", .x))
+  gtdb_accession <- str_extract(.x, "(?<=_gtdbrep_)(GCF_[^_]+)")
+  if (is.na(gtdb_accession)) {
+    gtdb_accession <- str_extract(.x, "(?<=_ref_)(GCF_[^_]+)")
+  }
   
-  df <- fread(.x) %>% 
+  df <- read_tsv(.x, col_types = col_types) %>% 
     as_tibble() %>%
     group_by(ref) %>%
     summarise(
       snpdist=sum(common-sharedAlleles)
     ) %>%
-    add_column(sim_dist=as.numeric(gsub(".*d", "", gsub("_ref.*", "", name))), .before=1) %>%
+    filter(str_extract(ref, "^[^_]+_[^_]+")==gtdb_accession) %>%
+    add_column(sim_dist=str_extract(.x, "(?<=_d)\\d+"), .before=1) %>%
+    dplyr::rename(snp_dist = snpdist) %>%
     add_column(sample=name, .before = 1) %>%
-    add_column(method="Strainge")
+    add_column(method="Strainge") %>%
+    add_column(simulation=simulation, .before=1)
     
-  df <- df[which.min(df$snpdist),]
+  df <- df[which.min(df$snp_dist),]
   
   return(df)
 })
@@ -191,99 +532,146 @@ strainge$ref <- NULL
 
 # Load TRACS results
 
-tracm <-  map_dfr(Sys.glob("./data/meta_sim_mixtures/*_tracm_distances.csv"), ~{
-  df <- fread(.x) %>% 
-    as_tibble() %>%
-    add_column(sample=gsub("_tracm.*", "", gsub(".*/sim_", "", .x)), .before = 1)
-  df$sim_dist <- as.numeric(gsub("d", "", gsub("_ref.*", "", df$sample)))
-  df <- df[which.min(df$`filtered SNP distance`),]
+col_types <- spec(read_csv(Sys.glob("./data/meta_sim_mixtures/sim*/tracs*")[[1]]))$cols
+
+tracs <-  map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/tracs_filt_reduced*"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  name <- gsub(".*_ref_", "", gsub("_g.*", "", .x))
+  
+  gtdb_accession <- str_extract(.x, "(?<=_gtdbrep_)(GCF_[^_]+)")
+  if (is.na(gtdb_accession)) {
+    gtdb_accession <- str_extract(.x, "(?<=_ref_)(GCF_[^_]+)")
+  }
+  
+  df <- read_csv(.x, col_types=col_types) %>% 
+    add_column(sim_dist=str_extract(.x, "(?<=_d)\\d+")) %>%
+    dplyr::rename(snp_dist = `filtered SNP distance`) %>%
+    filter(str_extract(sampleA, "(?<=_)(G[^_]+_[^_]+)")==gtdb_accession) %>%
+    add_column(method="Tracs") %>%
+    add_column(sample=name, .before = 1) %>%
+    add_column(simulation=simulation, .before = 1)
+  df <- df[which.min(df$snp_dist),]
   return(df)
 })
 
-tracm$species <- gsub("_[PA].*", "", gsub(".*sample[AB]_", "", tracm$sampleA))
+tracs$species <- gsub("_[PA].*", "", gsub(".*sample[AB]_", "", tracs$sampleA))
 
-
-tax <- rbind(fread("./data/bac120_metadata_r207.tsv.gz") %>% as_tibble(),
-             fread("./data/ar53_metadata_r207.tsv.gz") %>% as_tibble())
-tax <- tax %>%
-  add_column(strain=gsub(".*s__", "", tax$gtdb_taxonomy)) %>%
-  add_column(accession2=gsub("^[A-Z]*_", "", tax$accession), .before = 1)
-
-tracm$species <- tax$strain[match(tracm$species, tax$accession2)]
+# tax <- rbind(fread("./data/bac120_metadata_r207.tsv.gz") %>% as_tibble(),
+#              fread("./data/ar53_metadata_r207.tsv.gz") %>% as_tibble())
+# tax <- tax %>%
+#   add_column(strain=gsub(".*s__", "", tax$gtdb_taxonomy)) %>%
+#   add_column(accession2=gsub("^[A-Z]*_", "", tax$accession), .before = 1)
+# 
+# tracm$species <- tax$strain[match(tracm$species, tax$accession2)]
 
 # Load InStrain results
 
-instrain <- map_dfr(Sys.glob("./data/meta_sim_mixtures/*_instrain_distances.tsv"), ~{
-  df <- fread(.x) %>% 
+
+col_types <- spec(read_tsv(Sys.glob("./data/meta_sim_mixtures/sim*/instrain*")[[1]]))$cols
+
+instrain <- map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/instrain_sim*"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  name <- gsub(".*_ref_", "", gsub("_g.*", "", .x))
+  
+  gtdb_accession <- str_extract(.x, "(?<=_gtdbrep_)(GCF_[^_]+)")
+  if (is.na(gtdb_accession)) {
+    gtdb_accession <- str_extract(.x, "(?<=_ref_)(GCF_[^_]+)")
+  }
+  
+  df <- read_tsv(.x, col_types=col_types) %>% 
     as_tibble() %>%
-    add_column(sample=gsub("_instrain.*", "", gsub(".*/sim_", "", .x)), .before = 1)
-    df$sim_dist <- as.numeric(gsub("d", "", gsub("_ref.*", "", df$sample)))
+    filter(str_extract(scaffold, "^[^_]+_[^_]+")==gtdb_accession) %>%
+    dplyr::rename(snp_dist = population_SNPs) %>%
+    add_column(sim_dist=str_extract(.x, "(?<=_d)\\d+")) %>%
+    add_column(method="InStrain") %>%
+    add_column(sample=name, .before = 1) %>%
+    add_column(simulation=simulation, .before = 1)
+    
+    return(df)
+})
+
+
+# InStrain custom DB
+
+col_types <- spec(read_tsv(Sys.glob("./data/meta_sim_mixtures/sim*/instrain_customDB*")[[1]]))$cols
+
+instrain_customDB <- map_dfr(Sys.glob("./data/meta_sim_mixtures/sim*/instrain_customDB*"), ~{
+  simulation <- gsub(".*/(sim_\\d+)/.*", "\\1", .x)
+  name <- gsub(".*_ref_", "", gsub("_g.*", "", .x))
+  
+  gtdb_accession <- str_extract(.x, "(?<=_gtdbrep_)(GCF_[^_]+)")
+  if (is.na(gtdb_accession)) {
+    gtdb_accession <- str_extract(.x, "(?<=_ref_)(GCF_[^_]+)")
+  }
+  gtdb_accession <- gsub("\\.[0-9]", "", gtdb_accession)
+  
+  df <- read_tsv(.x, col_types=col_types) %>% 
+    as_tibble() %>%
+    filter(str_extract(scaffold, "^[^_]+_[^_]+")==gtdb_accession) %>%
+    dplyr::rename(snp_dist = population_SNPs) %>%
+    add_column(sim_dist=str_extract(.x, "(?<=_d)\\d+")) %>%
+    add_column(method="InStrain (custom DB)") %>%
+    add_column(sample=name, .before = 1) %>%
+    add_column(simulation=simulation, .before = 1)
+    
     return(df)
 })
 
 # Rename species    
-instrain_meta <- read_tsv("./data/genomes-nr_metadata.tsv.gz")
-instrain_meta$species <- gsub(".*s__", "", instrain_meta$Lineage)
-instrain_meta$species[instrain_meta$species=="Clostridium_M bolteae"] <- "Enterocloster bolteae"
-instrain_meta$species[instrain_meta$species=="Lactobacillus_F plantarum"] <- "Lactiplantibacillus pentosus"
-instrain_meta$species[instrain_meta$species=="Lactobacillus_F pentosus"] <- "Lactiplantibacillus pentosus"
-instrain_meta$species[instrain_meta$species=="Faecalicatena glycyrrhizinilyticum"] <- "Schaedlerella glycyrrhizinilytica_A"
-instrain$genome <- gsub("_[0-9]*$" ,"", instrain$scaffold)
-
-instrain <- instrain %>%
-  group_by(sample, sim_dist, genome) %>%
-  summarise(
-    snpdist = sum(population_SNPs)
-  )
-
-instrain$species <- instrain_meta$species[match(instrain$genome, instrain_meta$Genome)]
-
-
-tracm$species[!tracm$species %in% instrain$species]
-tracm$snpdist <- tracm$`filtered SNP distance`
-
-instrain <- instrain %>% 
-  filter(paste(sample, species) %in% paste(tracm$sample, tracm$species))
+# instrain_meta <- read_tsv("./data/genomes-nr_metadata.tsv.gz")
+# instrain_meta$species <- gsub(".*s__", "", instrain_meta$Lineage)
+# instrain_meta$species[instrain_meta$species=="Clostridium_M bolteae"] <- "Enterocloster bolteae"
+# instrain_meta$species[instrain_meta$species=="Lactobacillus_F plantarum"] <- "Lactiplantibacillus pentosus"
+# instrain_meta$species[instrain_meta$species=="Lactobacillus_F pentosus"] <- "Lactiplantibacillus pentosus"
+# instrain_meta$species[instrain_meta$species=="Faecalicatena glycyrrhizinilyticum"] <- "Schaedlerella glycyrrhizinilytica_A"
+# instrain$genome <- gsub("_[0-9]*$" ,"", instrain$scaffold)
+# 
+# instrain <- instrain %>%
+#   group_by(sample, sim_dist, genome) %>%
+#   summarise(
+#     snpdist = sum(population_SNPs)
+#   )
+# 
+# instrain$species <- instrain_meta$species[match(instrain$genome, instrain_meta$Genome)]
+# 
+# 
+# tracm$species[!tracm$species %in% instrain$species]
+# tracm$snpdist <- tracm$`filtered SNP distance`
+# 
+# instrain <- instrain %>% 
+#   filter(paste(sample, species) %in% paste(tracm$sample, tracm$species))
 
 
 # Combine distances
-all_dists <- rbind(instrain[,c('sample', 'sim_dist', 'snpdist')] %>%
-              add_column(method="instrain"),
-              tracm[,c('sample', 'sim_dist', 'snpdist')] %>% 
-                     add_column(method="tracm"))
-
-strainphlan <- strainphlan[strainphlan$sample %in% all_dists$sample,]
-
-all_dists <- rbind(all_dists, strainge, tibble(
-  sample=strainphlan$sample,
-  sim_dist=strainphlan$sim_dist,
-  snpdist=strainphlan$scaled_snp_dist,
-  method="strainphlan"
-))
-
-
-# Filter out samples that are below the detection threshold
-all_dists <- all_dists[!all_dists$sample %in% c("d5_ref_GCF_018292125.1_ASM1829212v1"),]
-
-# Fix names
-all_dists$sim_name <- paste('Simulated\nSNPs:', all_dists$sim_dist)
-all_dists$Method <- all_dists$method
-all_dists$Method[all_dists$method=='instrain'] <- 'inStrain'
-all_dists$Method[all_dists$method=='tracm'] <- "Trac'm"
-all_dists$Method[all_dists$method=='Strainge'] <- 'StrainGE'
-all_dists$Method[all_dists$method=='strainphlan'] <- 'StrainPhlAn'
+all_dists <- rbind(instrain[,c('simulation','sample', 'sim_dist', 'snp_dist', 'method')],
+                   instrain_customDB[,c('simulation','sample', 'sim_dist', 'snp_dist', 'method')],
+              tracs[,c('simulation','sample', 'sim_dist', 'snp_dist', 'method')],
+              strainphlan[,c('simulation','sample', 'sim_dist', 'snp_dist', 'method')],
+              strainge[,c('simulation','sample', 'sim_dist', 'snp_dist', 'method')])
+all_dists$sim_dist <- as.numeric(all_dists$sim_dist)
 
 # Calculate errors
-error_pdf <- all_dists  %>% filter(method!="midas2")
-error_pdf$error <- error_pdf$snpdist - error_pdf$sim_dist
-error_pdf$rel_error <- (error_pdf$snpdist - error_pdf$sim_dist)/error_pdf$sim_dist
+error_pdf <- all_dists
+error_pdf$error <- error_pdf$snp_dist - error_pdf$sim_dist
+error_pdf$rel_error <- (error_pdf$snp_dist - error_pdf$sim_dist)/error_pdf$sim_dist
+
+# Filter out samples that are below the detection threshold
+sim_dists$genome <- gsub("_[Ag].*", "", sim_dists$genome)
+error_pdf$sample <- gsub("_[Ag].*", "", error_pdf$sample)
+stopifnot(all(error_pdf$sample %in% unique(sim_dists$genome)))
+
+min_prop <- 0.01
+drop <- sim_dists %>% filter(propA<min_prop | propB<min_prop)
+error_pdf <- error_pdf %>%
+  filter(!paste(simulation, sample) %in% paste(drop$simulation, drop$genome))
+
 
 # Generate plot
 dodge_width <- 0.7
-gg <- ggplot(error_pdf, aes(x=sim_dist, y=rel_error, color=method, group=method)) + 
+gg <- ggplot(error_pdf |> filter(simulation=='sim_97'), aes(x=sim_dist, y=rel_error, color=method, group=method)) + 
   scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
                      breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
-                     limits = c(-5, 5000)) +
+                     limits = c(-5, 10000)) +
   scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
                      breaks=c(0, 5, 50, 500)) +
   geom_hline(yintercept = 0, colour='black', size=0.5) +
@@ -298,6 +686,39 @@ gg <- ggplot(error_pdf, aes(x=sim_dist, y=rel_error, color=method, group=method)
 
 gg
 
-# ggsave("./figures/meta_simulation_snpdist_scaled_2d_nomidas_simple.png", width = 10, height = 7)
-# ggsave("./figures/meta_simulation_snpdist_scaled_2d_nomidas_simple.pdf", width = 10, height = 7)
+# ggsave("./figures/meta_simulation_snpdist_scaled_revision.png", width = 10, height = 7)
+# ggsave("./figures/meta_simulation_snpdist_scaled_revision.pdf", width = 10, height = 7)
+```
+
+
+```{r}
+dodge_width <- 0.7
+error_pdf$Simulation <- paste0(gsub("sim_", "Average reference\n identity: ", error_pdf$simulation), "%")
+error_pdf$Simulation <- factor(error_pdf$Simulation, levels=rev(c("Average reference\n identity: 97%",
+                                                "Average reference\n identity: 99%",
+                                                "Average reference\n identity: 100%")))
+gg <- ggplot(error_pdf, aes(x=sim_dist, y=rel_error, color=method, group=method)) + 
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks = c(0, 5, 50, 500, 5000),
+                     limits = c(-5, 10000)) +
+  scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks=c(0, 5, 50, 500)) +
+  geom_hline(yintercept = 0, colour='black', size=0.5) +
+  geom_boxplot(aes(group=interaction(sim_dist, method)), 
+               position=position_dodge(width=dodge_width), outlier.colour = NA) +
+  geom_point(position=position_jitterdodge(jitter.width = 0.05, dodge.width = dodge_width)) +
+  facet_wrap(~Simulation, nrow=1) +
+  scale_colour_manual(values=c("Tracs"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
+                                       "StrainPhlAn"="#E18727FF", "Strainge"="#0072B5FF")) +
+  # ggsci::scale_color_nejm() +
+  xlab("Simulated SNP distance") +
+  ylab("Relative error in SNP distance") +
+  theme_clean(base_size = 25) +
+  theme(plot.background = element_blank()) 
+
+gg
+
+
+# ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.png", width = 12, height = 7)
+# ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.pdf", width = 12, height = 7)
 ```

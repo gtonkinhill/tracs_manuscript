@@ -139,7 +139,7 @@ strainge <- map_dfr(Sys.glob("./data/pneumo_sim_mixtures/*_strainge_comparison.t
 
 strainge$ref <- NULL
 
-sim_props <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_props/*dist_props.csv"), ~{
+sim_props <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/sim_dist_props/*"), ~{
   name <- gsub("_dist_props.*", "", gsub(".*/sim_", "", .x))
   fread(.x) %>% 
     as_tibble() %>%
@@ -218,4 +218,130 @@ gg
 
 # ggsave("./figures/pneumo_simulation_snpdist_2d_scaled_nomidas_simple.png", width = 10, height = 7)
 # ggsave("./figures/pneumo_simulation_snpdist_2d_scaled_nomidas_simple.pdf", width = 10, height = 7)
+```
+
+
+```{r}
+sim_props$min_prop <- pmin(sim_props$propA, sim_props$propB)
+sim_props <- sim_props %>%
+  filter(distance <=500)
+
+error_pdf$min_prop <- sim_props$min_prop[match(error_pdf$simulation, sim_props$simulation)]
+
+# Generate plot
+dodge_width <- 0.7
+error_pdf$simulation_dist <- paste0("Simulated transmission\ndistance: ", error_pdf$simdist)
+gg <- ggplot(error_pdf, aes(x=min_prop, y=rel_error, color=Method, group=Method)) + 
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
+                     limits = c(-5, 5000)) +
+  scale_x_continuous(limits = c(0,1),
+                     breaks=c(0, 0.25, 0.5, 0.75, 1)) +
+  geom_hline(yintercept = 0, colour='black', size=0.5) +
+  geom_point() +
+  facet_wrap(~simulation_dist, scales = "free", nrow=1) +
+  ggsci::scale_color_nejm() +
+  xlab("Minimum strain frequency in transmission pair") +
+  ylab("Relative error in SNP distance") +
+  theme_clean(base_size = 25) +
+  theme(plot.background = element_blank()) 
+
+gg
+
+
+ggsave("./figures/pneumo_simulation_snpdist_vs_frequency.png", width = 12, height = 7)
+ggsave("./figures/pneumo_simulation_snpdist_vs_frequency.pdf", width = 12, height = 7)
+```
+
+
+## Comparing parameters
+
+```
+rm tracs_cmds_revision.txt
+rm parallel_tracs_nocovfilt_cmds.txt
+for f in sim_d5*[0-9]
+do
+  echo tracs pipe -i ${f}/input_data.csv -o tracs_nocovfilt_${f} -t 5 --database /data1/gerryt/tracm-data/simulations/pneumo_art_mix/gpsDB.zip --keep-all --filter --keep-cov-outliers >> tracs_cmds_revision.txt
+done
+
+parallel --joblog parallel_tracs_nocovfilt_cmds.txt --progress -j 30 < tracs_cmds_revision.txt
+
+for f in tracs_nocovfilt*
+do
+#remove tracs_nocovfilt_
+prefix=$(echo $f | sed 's/tracs_nocovfilt_//')
+echo $prefix
+cp ${f}/transmission_distances.csv ./tracs_nocovfilt/${prefix}_tracs_nocovfilt_distances.csv
+done
+
+#tar gzip 
+tar -czf tracs_nocovfilt.tar.gz tracs_nocovfilt
+```
+
+Generate plot with different parameter settings
+
+```{r}
+tracs_distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/*_tracm_distances.csv"), ~{
+  name <- gsub("_tracm_distances.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1) %>% 
+  group_by(simulation) %>%
+  slice_min(`filtered SNP distance`, with_ties = FALSE)
+}))
+
+nocov_distances <- do.call(rbind, purrr::map(Sys.glob("./data/pneumo_sim_mixtures/tracs_nocovfilt/*_tracs_nocovfilt_distances.csv"), ~{
+  name <- gsub("_tracs_nocovfilt_distances.*", "", gsub(".*/sim_", "", .x))
+  fread(.x) %>% as_tibble() %>%
+    add_column(simulation=name, .before=1) %>% 
+  group_by(simulation) %>%
+  slice_min(`filtered SNP distance`, with_ties = FALSE)
+}))
+
+diff_params_dists <- tibble(
+  simulation = c(tracs_distances$simulation, tracs_distances$simulation, nocov_distances$simulation, nocov_distances$simulation),
+  `parameter set` = factor(rep(c('coverage & filter', 'coverage & no filter', 'filter & no coverage', 'no coverage & no filter'), 
+                        each = nrow(tracs_distances)),
+                        levels=c('coverage & filter', 'coverage & no filter', 'filter & no coverage', 'no coverage & no filter')),
+  distance = c(tracs_distances$`filtered SNP distance`, 
+               tracs_distances$`SNP distance`,
+               nocov_distances$`filtered SNP distance`,
+               nocov_distances$`SNP distance`)
+)
+
+diff_params_dists$`simulation distance` <- as.numeric(gsub("d","", gsub("_.*","",diff_params_dists$simulation)))
+
+
+
+
+diff_params_dists <- diff_params_dists %>%
+  filter(simulation %in% instrain_distances$simulation)
+
+# Calculate errors
+diff_params_error_pdf <- diff_params_dists
+diff_params_error_pdf$error <- diff_params_error_pdf$distance - diff_params_error_pdf$`simulation distance`
+diff_params_error_pdf$rel_error <- (diff_params_error_pdf$distance - diff_params_error_pdf$`simulation distance`)/diff_params_error_pdf$`simulation distance`
+
+# Generate plot
+dodge_width <- 1
+gg <- ggplot(diff_params_error_pdf |> filter(`simulation distance`==5), aes(x=`parameter set`, y=rel_error, color=`parameter set`, group=`parameter set`)) + 
+  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+                     breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
+                     limits = c(-5, 5000)) +
+  # scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+  #                    breaks=c(0, 5, 50, 500)) +
+  geom_hline(yintercept = 0, colour='black', size=0.5) +
+  geom_boxplot(aes(group=interaction(`simulation distance`, `parameter set`)), 
+               position=position_dodge(width=dodge_width), outlier.colour = NA) +
+  geom_point(position=position_jitterdodge(jitter.width = 0.05, dodge.width = dodge_width)) +
+  ggsci::scale_color_nejm() +
+  xlab("Simulated SNP distance") +
+  ylab("Relative error in SNP distance") +
+  theme_clean(base_size = 25) +
+  theme(plot.background = element_blank()) 
+
+gg
+
+
+ggsave("./figures/pneumo_simulation_snpdist_diff_params.png", width = 10, height = 7)
+ggsave("./figures/pneumo_simulation_snpdist_diff_params.pdf", width = 10, height = 7)
 ```
