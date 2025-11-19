@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Parabacteroides_merdae,B_t__SGB1949,A_t__SGB1949,0
-s__Enterococcus_faecium,A_t__SGB7967,B_t__SGB7967,467
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359
+s__Parabacteroides_merdae,A_t__SGB1949,B_t__SGB1949,0
+s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,497

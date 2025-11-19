@@ -98,6 +98,7 @@ tax <- tax %>%
 distances$strain <- tax$strain[match(distances$species, tax$accession2)]
 ```
 
+
 Add metadata and relationship between samples. The `filereport_read_run_PRJEB47909_tsv-2.csv` file contains the inferred mapping between accessions in the ENA and the metadata included as supplementary material in Ianiro et al., 2022.
 
 ```{r}
@@ -175,6 +176,20 @@ distances_filt$same_study <- map2_lgl(distances_filt$sampleA_alt, distances_filt
 distances_filt$`filtered SNP distance` <- as.numeric(distances_filt$`filtered SNP distance`)
 
 distances_filt <- distances_filt %>% filter(relationship!="UNIVERSAL DONOR")
+```
+
+This small section was used to choose samples from which to simulate the metagenomic data in the 'simulations_metagenomic_mixture.RmD' Rmarkdown.
+```{r, eval=FALSE}
+temp <- distances_filt %>% filter(`filtered SNP distance` < 3000)
+temp <- distances_filt %>% filter(!paste(sampleA, sampleB) %in% paste(temp$sampleA, temp$sampleB))
+
+# (distances %>% filter(paste(sampleA, sampleB) %in% paste(temp$sampleA, temp$sampleB)[[1]]))$strain
+
+sim_pair <- paste(temp$sampleA, temp$sampleB)[[1]]
+
+#Resulting in the selection of
+"ERR9707885"
+"ERR9709032"
 ```
 
 We can now infer species specific SNP thresholds using the mixture distribution method. We use samples from the same patient with 180 days as the 'close' pairs and samples from separate donors as the distant pairs.

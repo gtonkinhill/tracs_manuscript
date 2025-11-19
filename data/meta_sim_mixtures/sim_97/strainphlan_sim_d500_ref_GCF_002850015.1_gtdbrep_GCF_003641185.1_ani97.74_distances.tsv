@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Bacteroides_cellulosilyticus,B_t__SGB1844,A_t__SGB1844,97
-s__Lactiplantibacillus_pentosus,B_t__SGB7200,A_t__SGB7200,26
+s__Bacteroides_cellulosilyticus,A_t__SGB1844,B_t__SGB1844,97
+s__Lactiplantibacillus_pentosus,A_t__SGB7200,B_t__SGB7200,26
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359

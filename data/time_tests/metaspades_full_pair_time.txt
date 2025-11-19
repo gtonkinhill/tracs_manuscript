@@ -1,0 +1,23 @@
+  Command being timed: "metaspades.py -t 1 -1 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_1.fastq.gz -2 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_2.fastq.gz -o temp_metaspades"
+  User time (seconds): 28334.74
+  System time (seconds): 127.13
+  Percent of CPU this job got: 99%
+  Elapsed (wall clock) time (h:mm:ss or m:ss): 7:56:20
+  Average shared text size (kbytes): 0
+  Average unshared data size (kbytes): 0
+  Average stack size (kbytes): 0
+  Average total size (kbytes): 0
+  Maximum resident set size (kbytes): 3126284
+  Average resident set size (kbytes): 0
+  Major (requiring I/O) page faults: 81
+  Minor (reclaiming a frame) page faults: 2289672
+  Voluntary context switches: 1610
+  Involuntary context switches: 19288
+  Swaps: 0
+  File system inputs: 376592
+  File system outputs: 98606104
+  Socket messages sent: 0
+  Socket messages received: 0
+  Signals delivered: 0
+  Page size (bytes): 4096
+  Exit status: 0

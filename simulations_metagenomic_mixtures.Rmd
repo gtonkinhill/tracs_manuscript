@@ -127,12 +127,9 @@ for d in 5 50 500
 do
 prefix=$(basename $ref .fna)
 prefix=sim_d${d}_ref_${prefix}
-echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./gtdb_rep_references/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o $prefix --prefix $prefix >> sim_gtdb_refs_cmds.txt
+python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./gtdb_rep_references/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o $prefix --prefix $prefix >> sim_gtdb_refs_cmds.txt
 done
 done
-
-parallel --joblog parallel_sim_gtdb_refs_joblog.txt --progress -j 50 < sim_gtdb_refs_cmds.txt
-
 
 rm sim_gtdb_refs_div_cmds.txt
 for ref in ./refs_99/*.fna
@@ -141,7 +138,7 @@ for d in 5 50 500
 do
 prefix=$(basename $ref .fna)
 prefix=sim_d${d}_ref_${prefix}
-echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_99/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_99/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
+python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_99/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_99/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
 done
 done
 
@@ -151,12 +148,44 @@ for d in 5 50 500
 do
 prefix=$(basename $ref .fna)
 prefix=sim_d${d}_ref_${prefix}
-echo python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_97/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_97/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
+python /data1/gerryt/tracs/scripts/tracs-sim.py -t 5 --genomes ./refs_97/*.fna --tran-genome $ref -d $d -b 10000 -n 5 -o ./sim_97/${prefix} --prefix $prefix >> sim_gtdb_refs_div_cmds.txt
 done
+done
+```
+
+We now append randomly subsampled real sequencing data from two samples (ERR9707885 and ERR9709032) to each simulated dataset to better mimic real metagenomic data.
+
+```
+
+reformat.sh in1=ERR9707885_1.fastq.gz in2=ERR9707885_2.fastq.gz \
+             out1=sampled_ERR9707885_R1.fastq.gz out2=sampled_ERR9707885_R2.fastq.gz \
+             samplereadstarget=10000000 \
+             overwrite=t fastareadlen=150 threads=8
+
+
+reformat.sh in1=ERR9709032_1.fastq.gz in2=ERR9709032_2.fastq.gz \
+             out1=sampled_ERR9709032_R1.fastq.gz out2=sampled_ERR9709032_R2.fastq.gz \
+             samplereadstarget=10000000 \
+             overwrite=t fastareadlen=150 threads=8
+
+for f in ./*/*A1.fastq.gz; do
+    cat /data1/gerryt/tracm-data/simulations/meta_revision/sampled_ERR9707885_R1.fastq.gz >> "$f"
 done
 
-parallel --joblog parallel_sim_div_gtdb_refs_joblog.txt --progress -j 60 < sim_gtdb_refs_div_cmds.txt
+for f in ./*/*A2.fastq.gz; do
+    cat /data1/gerryt/tracm-data/simulations/meta_revision/sampled_ERR9707885_R2.fastq.gz >> "$f"
+done
+
+for f in ./*/*B1.fastq.gz; do
+    cat /data1/gerryt/tracm-data/simulations/meta_revision/sampled_ERR9709032_R1.fastq.gz >> "$f"
+done
+
+for f in ./*/*B2.fastq.gz; do
+    cat /data1/gerryt/tracm-data/simulations/meta_revision/sampled_ERR9709032_R2.fastq.gz >> "$f"
+done
+
 ```
+
 
 ## Run tools
 
@@ -180,7 +209,7 @@ done
 cd ..
 done
 
-parallel --joblog parallel_tracs_1cpu_cmds_joblog.txt --progress -j 90 < all_tracs_cmds.txt
+parallel --joblog parallel_tracs_1cpu_cmds_joblog2.txt --progress -j 90 < all_tracs_cmds.txt
 
 ```
 
@@ -207,7 +236,7 @@ done
 cd ..
 done
 
-parallel --joblog parallel_tracs_reduced_db_cmds_1cpu_joblog.txt --progress -j 90 < all_tracs_reduced_db_cmds_1cpu.txt
+parallel --joblog parallel_tracs_reduced_db_cmds_1cpu_joblog2.txt --progress -j 90 < all_tracs_reduced_db_cmds_1cpu.txt
 
 ```
 
@@ -228,7 +257,7 @@ done
 cd ..
 done
 
-parallel --joblog parallel_strainphlan_cmds_joblog.txt --progress -j 90 < all_strainphlan_cmds.txt
+parallel --joblog parallel_strainphlan_cmds_joblog2.txt --progress -j 90 < all_strainphlan_cmds.txt
 
 ```
 
@@ -268,7 +297,7 @@ done
 cd ..
 done
 
-parallel --joblog parallel_strainge_cmds_joblog.txt --progress -j 90 < all_strainge_revision_cmds.txt
+parallel --joblog parallel_strainge_cmds_joblog2.txt --progress -j 90 < all_strainge_revision_cmds.txt
 ```
 
 
@@ -290,7 +319,10 @@ done
 cd ..
 done
 
-parallel --joblog parallel_instrain_cmds_joblog.txt --progress -j 90 < all_instrain_cmds.txt
+parallel --joblog parallel_instrain_cmds_joblog2.txt --progress -j 90 < all_instrain_cmds.txt
+
+parallel --joblog parallel_instrain_cmds_joblog4.txt --progress -j 10 < all_instrain_cmds_rerun2.txt
+
 
 ```
 
@@ -322,7 +354,7 @@ cd ..
 done
 
 # Input FASTQ files for A and B
-parallel --joblog parallel_metspades_combined_cmds_joblog.txt --progress -j 90   '/usr/bin/time -v bash -c {} 2> time_logs/job_{#}.log' :::: all_meta_spades_cmds.txt
+parallel --joblog parallel_metspades_combined_cmds_joblog2.txt --progress -j 90   '/usr/bin/time -v bash -c {} 2> time_logs/job_{#}.log' :::: all_meta_spades_cmds.txt
 
 ```
 
@@ -339,13 +371,15 @@ do
   f=$(basename $f)
   echo "Processing: $f"
   meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+  rm -r "${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/"
+  rm ${folder_path}/${f}/metaspades_combined_${f}/instrain_map.stb
   mkdir -p "${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/"
   echo "/data1/gerryt/tracs/scripts/generate_instrain_stb.sh ${meta_out} /data1/gerryt/tracm-data/simulations/meta_revision/gtdb_rep_references/ ${folder_path}/${f}/metaspades_combined_${f}/instrain_map.stb ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/" >> /data1/gerryt/tracm-data/simulations/meta_revision/generate_stbs.txt
 done
 cd ..
 done
 
-parallel --joblog parallel_generate_stbs_cmds_joblog.txt --progress -j 90 < generate_stbs.txt
+parallel --joblog parallel_generate_stbs_cmds_joblog2.txt --progress -j 90 < generate_stbs.txt
 
 ```
 
@@ -384,14 +418,129 @@ do
         --inputA ${folder_path}/${f}/${f}_A*.fastq.gz \
         --inputB ${folder_path}/${f}/${f}_B*.fastq.gz \
         --references ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/*.fasta \
-        -o ${output_dir} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds3.txt
+        -o ${output_dir} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds2.txt
     fi
   done
 
   cd ..
 done
 
-parallel --joblog parallel_instrain_customDB_cmds_joblog3.txt --progress -j 3 < all_instrain_customDB_cmds3.txt
+parallel --joblog parallel_instrain_customDB_cmds_joblog2.txt --progress -j 90 < all_instrain_customDB_cmds.txt
+
+```
+
+
+## InStrain Individual Assembly
+
+First assemble everything with MetaSpades **separately**.
+
+```
+rm all_meta_spades_separate_cmds.txt
+# Loop over simulation folders
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo "Processing: $f"
+  A1="${folder_path}/${f}/${f}_A1.fastq.gz"
+  A2="${folder_path}/${f}/${f}_A2.fastq.gz"
+  B1="${folder_path}/${f}/${f}_B1.fastq.gz"
+  B2="${folder_path}/${f}/${f}_B2.fastq.gz"
+  
+  OUT="${folder_path}/${f}/metaspades_separate_${f}"
+  echo "metaspades.py -t 1 -1 ${A1} -2 ${A2} -o ${OUT}/sample_A" >> /data1/gerryt/tracm-data/simulations/meta_revision/all_meta_spades_separate_cmds.txt
+  echo "metaspades.py -t 1 -1 ${B1} -2 ${B2} -o ${OUT}/sample_B" >> /data1/gerryt/tracm-data/simulations/meta_revision/all_meta_spades_separate_cmds.txt
+done
+cd ..
+done
+
+# Input FASTQ files for A and B
+parallel --joblog parallel_metspades_separate_cmds_joblog.txt --progress -j 90   '/usr/bin/time -v bash -c {} 2> time_logs/job_{#}.log' :::: all_meta_spades_separate_cmds.txt
+
+```
+
+Now de-replicate using dRep at 98% as recommended by InStrain
+
+```
+
+```
+
+
+Generate InStrain stb
+
+```
+rm /data1/gerryt/tracm-data/simulations/meta_revision/generate_stbs.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  echo "Processing: $f"
+  meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+  rm -r "${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/"
+  rm ${folder_path}/${f}/metaspades_combined_${f}/instrain_map.stb
+  mkdir -p "${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/"
+  echo "/data1/gerryt/tracs/scripts/generate_instrain_stb.sh ${meta_out} /data1/gerryt/tracm-data/simulations/meta_revision/gtdb_rep_references/ ${folder_path}/${f}/metaspades_combined_${f}/instrain_map.stb ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/" >> /data1/gerryt/tracm-data/simulations/meta_revision/generate_stbs.txt
+done
+cd ..
+done
+
+parallel --joblog parallel_generate_stbs_cmds_joblog2.txt --progress -j 90 < generate_stbs.txt
+
+```
+
+Now run InStrain with custom references
+
+```
+rm all_instrain_customDB_cmds.txt
+for folder in sim_100 sim_99 sim_97
+do
+cd $folder
+folder_path=$(pwd)
+for f in sim_d5*
+do
+  f=$(basename $f)
+  meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+  echo python /data1/gerryt/tracs/scripts/run-instrain.py -t 1 --inputA ${folder_path}/${f}/${f}_A*.fastq.gz --inputB ${folder_path}/${f}/${f}_B*.fastq.gz --references ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/*.fasta -o ${folder_path}/instrain_customDB_${f} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds.txt
+done
+cd ..
+done
+
+
+for folder in sim_100 sim_99 sim_97
+do
+  cd $folder
+  folder_path=$(pwd)
+
+  for f in sim_d5*
+  do
+    f=$(basename $f)
+    output_dir="${folder_path}/instrain_customDB_${f}"
+    summary_file="${output_dir}/compare_instrain_summary.tsv"
+
+    if [ ! -f "$summary_file" ]; then
+      meta_out="${folder_path}/${f}/metaspades_combined_${f}/scaffolds.fasta"
+      echo python /data1/gerryt/tracs/scripts/run-instrain.py -t 10 \
+        --inputA ${folder_path}/${f}/${f}_A*.fastq.gz \
+        --inputB ${folder_path}/${f}/${f}_B*.fastq.gz \
+        --references ${folder_path}/${f}/metaspades_combined_${f}/species_scaffolds/*.fasta \
+        -o ${output_dir} -p ${f} >> /data1/gerryt/tracm-data/simulations/meta_revision/all_instrain_customDB_cmds2.txt
+    fi
+  done
+
+  cd ..
+done
+
+parallel --joblog parallel_instrain_customDB_cmds_joblog2.txt --progress -j 90 < all_instrain_customDB_cmds.txt
+
+parallel --joblog parallel_instrain_customDB_cmds_joblog3.txt --progress -j 10 < all_instrain_customDB_cmds2.txt
+
+
 
 ```
 
@@ -697,6 +846,9 @@ error_pdf$Simulation <- paste0(gsub("sim_", "Average reference\n identity: ", er
 error_pdf$Simulation <- factor(error_pdf$Simulation, levels=rev(c("Average reference\n identity: 97%",
                                                 "Average reference\n identity: 99%",
                                                 "Average reference\n identity: 100%")))
+
+error_pdf$Simulation[error_pdf$method=="InStrain (custom DB)"] <- "Average reference\n identity: 100%"
+
 gg <- ggplot(error_pdf, aes(x=sim_dist, y=rel_error, color=method, group=method)) + 
   scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
                      breaks = c(0, 5, 50, 500, 5000),
@@ -719,6 +871,6 @@ gg <- ggplot(error_pdf, aes(x=sim_dist, y=rel_error, color=method, group=method)
 gg
 
 
-# ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.png", width = 12, height = 7)
-# ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.pdf", width = 12, height = 7)
+ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.png", width = 12, height = 7)
+ggsave("./figures/meta_simulation_snpdist_scaled_revision_dist2ref_wInstrainCustomDB.pdf", width = 12, height = 7)
 ```

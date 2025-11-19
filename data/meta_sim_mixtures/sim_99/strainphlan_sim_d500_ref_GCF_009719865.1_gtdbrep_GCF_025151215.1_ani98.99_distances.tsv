@@ -1,6 +1,7 @@
 species,sample1,sample2,snp_dist
-s__Enterocloster_bolteae,B_t__SGB4758_group,A_t__SGB4758_group,96
-s__Amedibacillus_dolichus,A_t__SGB4035,B_t__SGB4035,522
-s__Bacteroides_cellulosilyticus,B_t__SGB1844,A_t__SGB1844,114
-s__Parabacteroides_merdae,B_t__SGB1949,A_t__SGB1949,4
+s__Amedibacillus_dolichus,B_t__SGB4035,A_t__SGB4035,522
 s__Akkermansia_muciniphila,B_t__SGB9226,A_t__SGB9226,218
+s__Parabacteroides_merdae,A_t__SGB1949,B_t__SGB1949,4
+s__Bacteroides_cellulosilyticus,B_t__SGB1844,A_t__SGB1844,114
+s__Enterocloster_bolteae,A_t__SGB4758_group,B_t__SGB4758_group,96
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359

@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
 s__Amedibacillus_dolichus,B_t__SGB4035,A_t__SGB4035,3
-s__Lactiplantibacillus_pentosus,B_t__SGB7200,A_t__SGB7200,337
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359
+s__Lactiplantibacillus_pentosus,A_t__SGB7200,B_t__SGB7200,337

@@ -1,5 +1,6 @@
 species,sample1,sample2,snp_dist
-s__Bacteroides_cellulosilyticus,A_t__SGB1844,B_t__SGB1844,107
-s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,513
+s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,547
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359
+s__Bacteroides_cellulosilyticus,B_t__SGB1844,A_t__SGB1844,107
 s__Akkermansia_muciniphila,A_t__SGB9226,B_t__SGB9226,1
 s__Parabacteroides_merdae,A_t__SGB1949,B_t__SGB1949,70

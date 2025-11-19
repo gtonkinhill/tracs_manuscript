@@ -323,10 +323,10 @@ diff_params_error_pdf$rel_error <- (diff_params_error_pdf$distance - diff_params
 
 # Generate plot
 dodge_width <- 1
-gg <- ggplot(diff_params_error_pdf |> filter(`simulation distance`==5), aes(x=`parameter set`, y=rel_error, color=`parameter set`, group=`parameter set`)) + 
-  scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
-                     breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
-                     limits = c(-5, 5000)) +
+gg <- ggplot(diff_params_error_pdf |> filter(`simulation distance`==5), aes(x=`parameter set`, y=error, color=`parameter set`, group=`parameter set`)) + 
+  # scale_y_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
+  #                    breaks = c(-500,-50, -5, 0, 5, 50, 500, 5000),
+  #                    limits = c(-5, 5000)) +
   # scale_x_continuous(trans = scales::pseudo_log_trans(sigma = 1, base = 10),
   #                    breaks=c(0, 5, 50, 500)) +
   geom_hline(yintercept = 0, colour='black', size=0.5) +
@@ -335,7 +335,7 @@ gg <- ggplot(diff_params_error_pdf |> filter(`simulation distance`==5), aes(x=`p
   geom_point(position=position_jitterdodge(jitter.width = 0.05, dodge.width = dodge_width)) +
   ggsci::scale_color_nejm() +
   xlab("Simulated SNP distance") +
-  ylab("Relative error in SNP distance") +
+  ylab("Error in SNP distance") +
   theme_clean(base_size = 25) +
   theme(plot.background = element_blank()) 
 

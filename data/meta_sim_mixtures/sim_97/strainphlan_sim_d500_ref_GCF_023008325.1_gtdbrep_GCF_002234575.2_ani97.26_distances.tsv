@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
 s__Parabacteroides_merdae,A_t__SGB1949,B_t__SGB1949,48
-s__Enterocloster_bolteae,A_t__SGB4758_group,B_t__SGB4758_group,3
+s__Enterocloster_bolteae,B_t__SGB4758_group,A_t__SGB4758_group,3
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359

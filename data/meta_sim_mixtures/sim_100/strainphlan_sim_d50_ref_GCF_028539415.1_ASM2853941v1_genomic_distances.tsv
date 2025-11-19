@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
+s__Enterococcus_faecium,A_t__SGB7967,B_t__SGB7967,502
 s__Bacteroides_cellulosilyticus,B_t__SGB1844,A_t__SGB1844,0
-s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,499
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359

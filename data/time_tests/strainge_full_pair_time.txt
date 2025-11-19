@@ -1,0 +1,23 @@
+	Command being timed: "python /data1/gerryt/tracs/scripts/run_strainge.py --inputA /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A2.fastq.gz --inputB /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B2.fastq.gz --referenceDB /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/pan-genome-db.hdf5 --ref-dir /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/ --ref-sim /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/similarities.tsv -o temp_strainge"
+	User time (seconds): 67811.95
+	System time (seconds): 589.53
+	Percent of CPU this job got: 108%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 17:29:32
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 11771000
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 172
+	Minor (reclaiming a frame) page faults: 49862494
+	Voluntary context switches: 9191126
+	Involuntary context switches: 266152
+	Swaps: 0
+	File system inputs: 440744
+	File system outputs: 27456240
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

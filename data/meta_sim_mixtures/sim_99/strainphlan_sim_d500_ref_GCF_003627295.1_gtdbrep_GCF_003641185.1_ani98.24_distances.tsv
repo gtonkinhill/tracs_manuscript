@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,473
-s__Lactiplantibacillus_pentosus,B_t__SGB7200,A_t__SGB7200,17
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359
+s__Lactiplantibacillus_pentosus,A_t__SGB7200,B_t__SGB7200,17
+s__Enterococcus_faecium,A_t__SGB7967,B_t__SGB7967,473

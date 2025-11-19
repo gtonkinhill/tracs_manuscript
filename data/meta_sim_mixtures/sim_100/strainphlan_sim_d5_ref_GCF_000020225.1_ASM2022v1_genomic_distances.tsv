@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Akkermansia_muciniphila,A_t__SGB9226,B_t__SGB9226,1
-s__Dialister_invisus,B_t__SGB5825_group,A_t__SGB5825_group,493
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359
+s__Dialister_invisus,B_t__SGB5825_group,A_t__SGB5825_group,494
+s__Akkermansia_muciniphila,B_t__SGB9226,A_t__SGB9226,1

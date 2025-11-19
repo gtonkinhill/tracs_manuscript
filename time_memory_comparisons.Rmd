@@ -11,226 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 It is difficult to directly compare the resource requirements of each algorithm because each one involves different parameters and often requires selecting specific programs for tasks like read alignment or inferring SNP distances from multiple sequence alignments. To enhance comparability, we consistently opted for the same algorithms used in the TRACS pipeline whenever feasible.
 
-To assess speed and memory requirements, we ran each algorithm on all 90 simulations of metagenomic sequencing data involving a pair of samples, where one genome had been transmitted. Some algorithms, like StrainGE, do not scale as efficiently when analysing multiple species simultaneously, which means that this algorithm is likely to take longer with larger datasets involving the transmission of multiple species.
+To assess speed and memory requirements, we ran each algorithm on a representative example of metagenomic sequencing data involving a pair of samples, where one genome had been transmitted. Some algorithms, like StrainGE, do not scale as efficiently when analysing multiple species simultaneously, which means that this algorithm is likely to take longer with larger datasets involving the transmission of multiple species.
 
 Overall, these results offer a general indication of each algorithm's performance. However, the exact differences in speed and memory usage will vary depending on the characteristics of each specific dataset.
 
 ## Run each method
 
-The initial runs were completed as outline in the `simulations_metagenomic_mixture.Rmd` document. The following commands were used to run only the comparison steps of each algorithm.
-
-
-
-### Run comparison steps only
-
-#### InStrain
-
-```
-mkdir -p instrain_comparisons
-mkdir -p instrain_time_logs
-
-for parent_dir in sim_*/instrain_sim_d5*; do
-  # Define the full paths for sampleA and sampleB
-  sampleA_path=$(echo "${parent_dir}"/sampleA*)
-  sampleB_path=$(echo "${parent_dir}"/sampleB*)
-
-  # Check if both sampleA and sampleB directories exist within the parent directory.
-  if [ -d "$sampleA_path" ] && [ -d "$sampleB_path" ]; then
-    # Create a unique name for the output files based on the parent directory path.
-    # This replaces slashes with underscores to create a valid filename.
-    # e.g., "sim_99/instrain_sim_d5_..." becomes "sim_99_instrain_sim_d5_..."
-    output_prefix=$(echo "$parent_dir" | tr '/' '_')
-
-    # Define the output file paths for the comparison results and the time log.
-    output_tsv="instrain_comparisons/${output_prefix}_compare.tsv"
-    time_log="instrain_time_logs/${output_prefix}_time_log.txt"
-
-    # Construct and print the full command to be executed.
-    # Each command is printed on a new line.
-    echo "/usr/bin/time -v -o ${time_log} inStrain compare -i ${sampleA_path} ${sampleB_path} -o ${output_tsv} --min_cov 2 -p 1" >> timing_intrain_compare_cmds.txt
-  fi
-done
-
-parallel --joblog timing_intrain_compare_joblog.txt --progress -j 90 < timing_intrain_compare_cmds.txt
-```
-
-#### StrainGE
-
-```
-mkdir -p strainge_comparisons
-mkdir -p strainge_time_logs
-
-rm timing_strainge_compare_cmds.txt
-for parent_dir in sim_*/strainge_sim_d5*; do
-  # Define the full paths for sampleA and sampleB
-  sampleA_path="${parent_dir}/sampleA/sampleA.hdf5"
-  sampleB_path="${parent_dir}/sampleB/sampleB.hdf5"
-  echo $sampleA_path
-  echo $sampleB_path
-
-  # Check if both sampleA and sampleB directories exist within the parent directory.
-  if [ "$sampleA_path" ] && [ "$sampleB_path" ]; then
-    # Create a unique name for the output files based on the parent directory path.
-    # This replaces slashes with underscores to create a valid filename.
-    # e.g., "sim_99/instrain_sim_d5_..." becomes "sim_99_instrain_sim_d5_..."
-    output_prefix=$(echo "$parent_dir" | tr '/' '_')
-
-    # Define the output file paths for the comparison results and the time log.
-    output_tsv="strainge_comparisons/${output_prefix}_compare.tsv"
-    time_log="strainge_time_logs/${output_prefix}_time_log.txt"
-
-    # Construct and print the full command to be executed.
-    # Each command is printed on a new line.
-    echo "/usr/bin/time -v -o ${time_log} straingr compare -o ${output_tsv} ${sampleA_path} ${sampleB_path}" >> timing_strainge_compare_cmds.txt
-  fi
-done
-
-parallel --joblog timing_strainge_compare_joblog.txt --progress -j 90 < timing_strainge_compare_cmds.txt
-
-```
-
-#### TRACS
-
-```
-
-mkdir -p tracs_comparisons
-mkdir -p tracs_time_logs
-
-rm timing_tracs_compare_cmds.txt
-rm timing_tracs_combine_cmds.txt
-for parent_dir in sim_*/tracs_filt_reduced_db_sim_d5*; do
-  # Define the full paths for sampleA and sampleB
-  sampleA_path=$(echo "${parent_dir}"/sampleA*)
-  sampleB_path=$(echo "${parent_dir}"/sampleB*)
-
-  # Check if both sampleA and sampleB directories exist within the parent directory.
-  if [ -d "$sampleA_path" ] && [ -d "$sampleB_path" ]; then
-    # Create a unique name for the output files based on the parent directory path.
-    # This replaces slashes with underscores to create a valid filename.
-    # e.g., "sim_99/instrain_sim_d5_..." becomes "sim_99_instrain_sim_d5_..."
-    output_prefix=$(echo "$parent_dir" | tr '/' '_')
-
-    # Define the output file paths for the comparison results and the time log.
-    output_dir="tracs_comparisons/${output_prefix}_combined"
-    output_tsv="tracs_comparisons/${output_prefix}_compare.tsv"
-    time_log="tracs_time_logs/${output_prefix}_time_log.txt"
-
-    # Construct and print the full command to be executed.
-    # Each command is printed on a new line.
-    echo "/usr/bin/time -v -o ${time_log} tracs combine -i ${sampleA_path} ${sampleB_path} -o ${output_dir}" >> timing_tracs_combine_cmds.txt
-    echo "/usr/bin/time -v -o ${time_log} tracs distance --msa ${output_dir}/*.fasta.gz -o ${output_tsv} --filter" >> timing_tracs_compare_cmds.txt
-  fi
-done
-
-parallel --joblog timing_tracs_combine_joblog.txt --progress -j 90 < timing_tracs_combine_cmds.txt
-parallel --joblog timing_tracs_compare_joblog.txt --progress -j 90 < timing_tracs_compare_cmds.txt
-
-```
-
-
-#### Collect run time summaries
-
-
-```
-for file in *joblog.txt; do awk 'NR > 1 { commands++; if ($7 == 0) success++; runtime += $4 } END { if (commands == 90 && success == 90) { d=int(runtime/86400); h=int(runtime%86400/3600); m=int(runtime%3600/60); printf "%s: %d days, %d hours, %d minutes\n", FILENAME, d, h, m } }' "$file"; done
-```
-
-parallel_instrain_cmds_joblog.txt: 4961315 seconds
-parallel_metspades_combined_cmds_joblog.txt: 3280652 seconds
-parallel_strainge_cmds_joblog.txt: 5701871 seconds
-parallel_strainphlan_cmds_joblog.txt: 1206871 seconds
-parallel_tracs_reduced_db_cmds_1cpu_joblog.txt: 823445 seconds
-timing_intrain_compare_joblog.txt: 28052 seconds
-timing_strainge_compare_joblog.txt: 4558 seconds
-timing_tracs_compare_joblog.txt: 384 seconds
-
-## Generate summary plots
-
-```{r, warning=FALSE, message=FALSE}
-library(tidyverse)
-library(ggthemes)
-library(patchwork)
-library(dplyr)
-```
-
-```{r}
-timing_data_90_pairs <- tibble(
-method=c("InStrain", "InStrain (custom DB)", "StrainGE", "StrainPhlAn", "TRACS"),
-time = c(4961315, 4961315 + 3280652, 5701871, 1206871, 823445)
-)
-
-lvls <- timing_data_90_pairs$method[order(-timing_data_90_pairs$time)]
-
-timing_data_90_pairs$method <- factor(timing_data_90_pairs$method,
-                                      levels=lvls)
-
-gg1 <- ggplot(timing_data_90_pairs, aes(x=method, y=time/3600/90, fill=method)) +
-  geom_bar(stat="identity") +
-  labs(x="Method", y="Time (hours)", title="Average CPU to compare a single sample pair from raw reads") +
-  theme_clean(base_size = 15) +
-  theme(plot.background = element_blank()) +
-  theme(legend.position = "none") +
-  scale_fill_manual(values=c("TRACS"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
-                                       "StrainPhlAn"="#E18727FF", "StrainGE"="#0072B5FF"))
-gg1
-
-# Note we are substituting the TRACS time in for StrainPhlAn as the algorithm outputs a MSA which can be used with any subsequent distance algorithm.
-timing_data_compare <- tibble(
-method=c("InStrain", "InStrain (custom DB)", "StrainGE", "StrainPhlAn", "TRACS"),
-time = c(28052, 4961315 + 3280652, 4558, 384, 384) 
-)
-
-
-timing_data_compare$method <- factor(timing_data_compare$method,
-                                      levels=lvls)
-
-gg2 <- ggplot(timing_data_compare |> filter(method!="StrainPhlAn"), aes(x=method, y=time/90/3600, fill=method)) +
-  geom_bar(stat="identity") +
-  #alternative to scale_y_log10() to avoid log scale
-  # scale_y_continuous(trans = scales::pseudo_log_trans(base = 10)) +
-  scale_y_sqrt(breaks=c(1, 10, 20)) +
-  labs(x="Method", y="Time (Hours)", title="Average CPU to compare a preprocessed sample pair") +
-  theme_clean(base_size = 15) +
-  theme(plot.background = element_blank()) +
-  theme(legend.position = "none") +
-  scale_fill_manual(values=c("TRACS"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
-                                       "StrainPhlAn"="#E18727FF", "StrainGE"="#0072B5FF"))
-gg2
-
-time_projection <- function(n, total_pair_run_time, comparison_time){
-  return(n * (total_pair_run_time - comparison_time)/90 + choose(n, 2) * comparison_time/90)
-}
-
-
-projected_times <- map_dfr(c(10, 100, 1000), ~{
-  tibble(
-    method = timing_data_90_pairs$method,
-    projected_time = time_projection(.x, timing_data_90_pairs$time, timing_data_compare$time),
-    n_pairs = .x
-  )
-})
-
-
-gg3 <- ggplot(projected_times, aes(x=n_pairs, y=projected_time/90/3600, colour=method)) +
-  geom_jitter(size=7, height = 0, width=0.01) +
-  scale_y_log10() +
-  scale_x_log10() +
-  labs(x="Number of Samples", y="Projected time (hours)", title="Projected time to compair metagenomic sample pairs") +
-  theme_clean(base_size = 15) +
-  theme(plot.background = element_blank()) +
-  theme(legend.position = "none") +
-  scale_colour_manual(values=c("TRACS"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
-                                       "StrainPhlAn"="#E18727FF", "StrainGE"="#0072B5FF"))
-gg3
-
-
-gg1 + gg2 + gg3
-```
-
-### Memory Consumption
-
-To provide an estimate of memory consumption, we ran each algorithm on a single pair of samples from the 90 simulations. The following commands were used to run each algorithm on a single pair of samples, and the memory usage was recorded using the `time` command.
-
+CPU and memory requirements were recorded using the unix `time` command.
 
 #### TRACS
 
@@ -240,10 +27,12 @@ To provide an estimate of memory consumption, we ran each algorithm on a single 
 
 #### InStrain
 
+Note: As the focus of this work is the strain tracking algorithms we have only included assembly to provide a rough indication of the additional overhead methods that rely on custom databases require. Different assembly algorithms will result in different resource requirements.
+
 ```
 /usr/bin/time -o ./time_tests/instrain_full_pair_time.txt -v python /data1/gerryt/tracs/scripts/run-instrain.py -t 1 --inputA /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A2.fastq.gz --inputB /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B2.fastq.gz --references /data1/gerryt/tracm-data/simulations/meta_revision/gtdb_rep_references/*.fna -o temp_instrain -p sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic
 
-/usr/bin/time -o ./time_tests/metaspades_full_pair_time.txt -v metaspades.py -t 1 -1 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_1.fastq.gz -2 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_2.fastq.gz -o temp_metaspades > nohup_metaspades.log 
+/usr/bin/time -o ./time_tests/metaspades_full_pair_time2.txt -v metaspades.py -t 50 -1 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_1.fastq.gz -2 /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_combined_2.fastq.gz -o temp_metaspades2
 ```
 
 #### StrainPlAn
@@ -258,12 +47,43 @@ To provide an estimate of memory consumption, we ran each algorithm on a single 
 /usr/bin/time -o ./time_tests/strainge_full_pair_time.txt -v python /data1/gerryt/tracs/scripts/run_strainge.py --inputA /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_A2.fastq.gz --inputB /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B1.fastq.gz /data1/gerryt/tracm-data/simulations/meta_revision/sim_100/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic/sim_d500_ref_GCF_000020225.1_ASM2022v1_genomic_B2.fastq.gz --referenceDB /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/pan-genome-db.hdf5 --ref-dir /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/ --ref-sim /data1/gerryt/tracm-data/simulations/meta_revision/strainge_db/similarities.tsv -o temp_strainge
 ```
 
-#### Summary plots
+### Run comparison steps only
+
+Here we run just the SNP distance estimate steps for each algorithm, assuming that the initial sample specific processing steps have already been completed. 
+
+#### InStrain
+
+```
+/usr/bin/time -v -o ./time_tests/instrain_compare_pair_time.txt inStrain compare -i ./temp_instrain/sampleA ./temp_instrain/sampleB -o ./temp_instrain/temp_compaire --min_cov 2 -p 1
+```
+
+#### StrainGE
+
+```
+/usr/bin/time -v -o ./time_tests/strainge_compare_pair_time.txt straingr compare -o ./temp_strainge/temp_compare ./temp_strainge/sampleA/sampleA.hdf5 ./temp_strainge/sampleB/sampleB.hdf5
+```
 
 
+#### TRACS
+
+```
+mkdir temp_tracs/temp_compare
+/usr/bin/time -v -o ./time_tests/tracs_combine_pair_time.txt tracs combine -i temp_tracs/sampleA temp_tracs/sampleB -o temp_tracs/temp_compare
+/usr/bin/time -v -o ./time_tests/tracs_compare_pair_time.txt tracs distance --msa temp_tracs/temp_compare/*.fasta.gz -o temp_tracs/temp_compare/temp_compare.tsv --filter
+```
+
+## Generate summary plots
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ggthemes)
+library(ggpattern)
+library(patchwork)
+library(dplyr)
+```
 
 ```{r}
-res <- map_dfr(Sys.glob("./data/memory/*.txt"), ~{
+res <- map_dfr(Sys.glob("./data/time_tests/*.txt"), ~{
   lines <- str_trim(read_lines(.x))
   tibble(
     method = gsub(".*/", "", gsub("_time.*", "", .x)),
@@ -272,8 +92,15 @@ res <- map_dfr(Sys.glob("./data/memory/*.txt"), ~{
   )
 })
 
-res$memory[res$method == "metaspades_full_pair"] <- res$memory[res$method == "metaspades_full_pair"] + res$memory[res$method == "instrain_full_pair"]
-res$cpu[res$method == "metaspades_full_pair"] <- res$cpu[res$method == "metaspades_full_pair"] + res$cpu[res$method == "instrain_full_pair"]
+res$memory[res$method == "tracs_compare_pair"] <- max(res$memory[res$method == "tracs_compare_pair"], res$memory[res$method == "tracs_combine_pair"])
+res$memory[res$method == "tracs_compare_pair"] <- res$cpu[res$method == "tracs_compare_pair"] + res$cpu[res$method == "tracs_combine_pair"]
+res <- res[res$method != "tracs_combine_pair",]
+
+res$memory[res$method == "metaspades_full_pair"] <- max(res$memory[res$method == "metaspades_full_pair"], res$memory[res$method == "instrain_full_pair"])
+
+assembly_cpu <- res$cpu[res$method == "metaspades_full_pair"]
+res$cpu[res$method == "metaspades_full_pair"] <- assembly_cpu + res$cpu[res$method == "instrain_full_pair"]
+
 
 res$Method <- recode(res$method,
                      "instrain_compare_pair" = "InStrain",
@@ -293,16 +120,114 @@ res$compare <- ifelse(grepl("compare", res$method), "Compare", "Full")
 pdf <- res %>%
   filter(compare=='Full')
 
-pdf$Method <- factor(pdf$Method, levels=lvls)
+pdf$Method <- factor(pdf$Method, levels=c("InStrain (custom DB)", "InStrain", "StrainGE", "StrainPhlAn", "TRACS"))
 
-ggplot(pdf, aes(x=Method, y=cpu, fill=Method)) +
+gg1 <- ggplot(pdf, aes(x=Method, y=cpu, fill=Method)) +
   geom_bar(stat="identity") +
+  geom_rect_pattern(
+    data = subset(pdf, Method == "InStrain (custom DB)"),
+    aes(
+      xmin = as.numeric(Method) - 0.45,
+      xmax = as.numeric(Method) + 0.45,
+      ymin = cpu - assembly_cpu,
+      ymax = cpu
+    ),
+    pattern = "crosshatch",
+    pattern_fill = "black",
+    pattern_density = 0.02,
+    pattern_spacing = 0.02
+  ) +
   labs(x="Method", y="Time (hours)") +
   theme_clean(base_size = 15) +
   theme(plot.background = element_blank()) +
   theme(legend.position = "none") +
   scale_fill_manual(values=c("TRACS"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
                                        "StrainPhlAn"="#E18727FF", "StrainGE"="#0072B5FF"))
+
+
+gg1
+
+
+
+
+pdf <- res %>%
+  filter(compare=='Compare')
+
+pdf <- rbind(pdf, res %>%
+               filter(method=='instrain_full_pair') %>%
+               mutate(Method='InStrain (custom DB)'))
+
+pdf$Method <- factor(pdf$Method, levels=c("InStrain (custom DB)", "InStrain", "StrainGE", "StrainPhlAn", "TRACS"))
+
+gg2 <- ggplot(pdf, aes(x=Method, y=cpu*60*60, fill=Method)) +
+  geom_bar(stat="identity") +
+  theme_clean(base_size = 15) +
+  theme(plot.background = element_blank()) +
+  theme(legend.position = "none") +
+  scale_fill_manual(values=c("TRACS"="#20854EFF", "InStrain"="#BC3C29FF", "InStrain (custom DB)"="#E38D81", 
+                                       "StrainPhlAn"="#E18727FF", "StrainGE"="#0072B5FF")) +
+  scale_y_continuous(trans = scales::pseudo_log_trans(base = 10), breaks = c(10, 100, 1e3, 1e4, 1e5)) +
+  labs(x="Method", y="Time (Seconds)", title="CPU to compare a preprocessed sample pair") 
+
+gg2
+
+
+
+# Projected times for larger datasets
+
+compare <- res %>%
+  filter(compare=='Compare')
+
+compare <- rbind(compare, res %>%
+               filter(method=='instrain_full_pair') %>%
+               mutate(Method='InStrain (custom DB)'))
+
+compare <- rbind(compare, res %>%
+               filter(method=='tracs_compare_pair') %>%
+               mutate(Method='StrainPhlAn'))
+
+full <- res %>%
+  filter(compare=='Full')
+
+#remove assembly from calculation
+full$cpu[full$Method=="InStrain (custom DB)"] <- full$cpu[full$Method=="InStrain"]
+
+# Estimate the time taken for preprocessing step per sample
+compare$base <- (full$cpu[match(compare$Method, full$Method)] - compare$cpu)/2
+
+time_projection <- function(n, base, comparison_time){
+  return(n * 2*base + choose(n, 2) * comparison_time)
+}
+
+projected_times <- map_dfr(c(10, 100, 1000), ~{
+  tibble(
+    method = compare$Method,
+    projected_time = time_projection(.x, compare$base, compare$cpu),
+    n_pairs = .x
+  )
+})
+
+
+gg3 <- ggplot(projected_times, aes(x=n_pairs, y=projected_time, colour=method)) +
+  geom_jitter(size=7, height = 0, width=0.01) +
+  scale_y_log10(breaks = c(10, 100, 1e3, 1e4, 1e5, 1e6, 1e7)) +
+  scale_x_log10() +
+  labs(x="Number of Samples", y="Projected time (hours)", title="Projected time to compair metagenomic sample pairs") +
+  theme_clean(base_size = 15) +
+  theme(plot.background = element_blank()) +
+  theme(legend.position = "none") +
+  scale_colour_manual(values=c("TRACS"="#20854EFF", 
+                               "InStrain"="#BC3C29FF", 
+                               "InStrain (custom DB)"="#E38D81", 
+                               "StrainPhlAn"="#E18727FF", 
+                               "StrainGE"="#0072B5FF"))
+gg3
+
+
+pdf <- res %>%
+  filter(compare=='Full')
+
+pdf$Method <- factor(pdf$Method, levels=c("InStrain (custom DB)", "InStrain", "StrainGE", "StrainPhlAn", "TRACS"))
 
 
 gg4 <- ggplot(pdf, aes(x=Method, y=memory, fill=Method)) +
@@ -317,10 +242,9 @@ gg4
 
 
 
-
-
 gg1 + gg2 + gg3 + gg4 + patchwork::plot_layout(nrow = 2, ncol = 2)
 
-# ggsave("./figures/resources.png", width = 12, height = 10)
-# ggsave("./figures/resources.pdf", width = 12, height = 10)
+
+ggsave("./figures/resources.png", width = 12, height = 10)
+ggsave("./figures/resources.pdf", width = 12, height = 10)
 ```

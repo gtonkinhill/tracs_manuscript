@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Enterocloster_bolteae,A_t__SGB4758_group,B_t__SGB4758_group,98
-s__Klebsiella_pneumoniae,B_t__SGB10115,A_t__SGB10115,4
+s__Klebsiella_pneumoniae,A_t__SGB10115,B_t__SGB10115,21
+s__Enterocloster_bolteae,B_t__SGB4758_group,A_t__SGB4758_group,98
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359

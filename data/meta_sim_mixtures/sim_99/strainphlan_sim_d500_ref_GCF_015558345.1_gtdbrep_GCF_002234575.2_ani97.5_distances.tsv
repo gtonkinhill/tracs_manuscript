@@ -1,3 +1,5 @@
 species,sample1,sample2,snp_dist
-s__Dialister_invisus,A_t__SGB5825_group,B_t__SGB5825_group,577
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359
+s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,858
 s__Enterocloster_bolteae,A_t__SGB4758_group,B_t__SGB4758_group,5
+s__Dialister_invisus,A_t__SGB5825_group,B_t__SGB5825_group,579

@@ -1,3 +1,0 @@
-sampleA,sampleB,date difference,SNP distance,transmission distance,expected K,filtered SNP distance,sites considered,MSA file
-sampleB_GCF_025151215.1_ASM2515121v1_genomic,sampleA_GCF_025151215.1_ASM2515121v1_genomic,NA,24,NA,NA,22,4377348,combinedGCF_025151215
-sampleB_GCF_029023785.1_ASM2902378v1_genomic,sampleA_GCF_029023785.1_ASM2902378v1_genomic,NA,4665,NA,NA,4397,2564669,combinedGCF_029023785

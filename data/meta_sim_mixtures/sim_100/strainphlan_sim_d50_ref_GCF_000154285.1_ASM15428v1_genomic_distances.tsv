@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Amedibacillus_dolichus,A_t__SGB4035,B_t__SGB4035,1
-s__Klebsiella_pneumoniae,B_t__SGB10115,A_t__SGB10115,111
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359
+s__Klebsiella_pneumoniae,B_t__SGB10115,A_t__SGB10115,75
+s__Amedibacillus_dolichus,B_t__SGB4035,A_t__SGB4035,1

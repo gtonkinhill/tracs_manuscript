@@ -1,3 +1,4 @@
 species,sample1,sample2,snp_dist
-s__Bacteroides_uniformis,A_t__SGB1836_group,B_t__SGB1836_group,0
-s__Klebsiella_pneumoniae,A_t__SGB10115,B_t__SGB10115,112
+s__Klebsiella_pneumoniae,A_t__SGB10115,B_t__SGB10115,2338
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359
+s__Bacteroides_uniformis,B_t__SGB1836_group,A_t__SGB1836_group,0

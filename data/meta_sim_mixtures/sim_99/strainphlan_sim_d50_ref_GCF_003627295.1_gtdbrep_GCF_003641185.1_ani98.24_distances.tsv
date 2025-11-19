@@ -1,4 +1,6 @@
 species,sample1,sample2,snp_dist
-s__Lactiplantibacillus_pentosus,B_t__SGB7200,A_t__SGB7200,2
+s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,868
 s__Akkermansia_muciniphila,B_t__SGB9226,A_t__SGB9226,222
-s__Amedibacillus_dolichus,B_t__SGB4035,A_t__SGB4035,470
+s__Escherichia_coli,B_t__SGB10068,A_t__SGB10068,359
+s__Amedibacillus_dolichus,A_t__SGB4035,B_t__SGB4035,470
+s__Lactiplantibacillus_pentosus,B_t__SGB7200,A_t__SGB7200,2

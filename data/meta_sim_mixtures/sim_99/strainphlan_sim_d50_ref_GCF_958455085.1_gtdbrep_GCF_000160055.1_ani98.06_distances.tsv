@@ -1,3 +1,5 @@
 species,sample1,sample2,snp_dist
+s__Enterococcus_faecium,B_t__SGB7967,A_t__SGB7967,875
+s__Dialister_invisus,B_t__SGB5825_group,A_t__SGB5825_group,6
+s__Escherichia_coli,A_t__SGB10068,B_t__SGB10068,359
 s__Akkermansia_muciniphila,A_t__SGB9226,B_t__SGB9226,227
-s__Dialister_invisus,B_t__SGB5825_group,A_t__SGB5825_group,5
